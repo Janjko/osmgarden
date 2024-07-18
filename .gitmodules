@@ -1,0 +1,3 @@
+[submodule "osm-import-schema"]
+	path = osm-import-schema
+	url = https://github.com/osm-hr/osm-import-schema.git
