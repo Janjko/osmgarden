@@ -33,6 +33,7 @@ def compare_atp_data(import_xml, osm_object):
     spiders = import_xml.xpath('//@atp-spider')
     spiders = list( dict.fromkeys(spiders) )
     import_elements = import_xml.xpath('/osm/child::*')
+    matching_tags = get_matching_tags(import_elements)
     for osm_element in osm_object['elements']:
         if not('ref' in osm_element['tags']):
             continue
@@ -74,7 +75,7 @@ def compare_atp_data(import_xml, osm_object):
                 osm_properties[tagkey] = tagvalue
             osm_properties['osm_link'] = f'https://osm.org/{osm_element["type"]}/{osm_element["id"]}'
             result_geojson['features'].append(Feature(geometry=osm_point, properties=osm_properties))
-    with open("my_points.geojson", "w") as outfile:
+    with open("my_points.geojson", "w", encoding='utf-8') as outfile:
         outfile.write(geojson.dumps(result_geojson, indent=2, sort_keys=True))
             
 def get_element_coordinates(element, isxml):
@@ -95,6 +96,21 @@ def search_hash_in_osm_elements(jsonobj, target_hash):
             elements.append(element)
     return elements
 
+def get_matching_tags(import_elements):
+    matching_tags = []
+    for import_element in import_elements:
+        temp_matching_tags = []
+        if import_element.tag == "domain":
+            continue
+        temp_matching_tags = sorted(import_element.xpath("./tag[@function='match']/@k"))
+        if (not list_of_lists_contains_list( matching_tags, temp_matching_tags )):
+            matching_tags.append(temp_matching_tags.copy())
+    return matching_tags
+
+def list_of_lists_contains_list(a, b):
+    for i in a:
+        if i == b:
+            return True
 
 directory_path = './import_xml_generated'
 for filename in os.listdir(directory_path):
