@@ -49,6 +49,13 @@ def compare_atp_data(import_xml, osm_object):
             continue
         matching_tags = import_element.xpath("./tag[@function='match']")
         matching_elements = search_matching_osm_elements(osm_object, matching_tags)
+        if len(matching_elements) > 0:
+            matches_xml = etree.SubElement(import_element, 'matches')
+        for matching_element in matching_elements:
+            etree.SubElement(matches_xml, matching_element['type'],
+                                          id=str(matching_element['id']),
+                                          version=str(matching_element['version']))
+            
         import_coords = get_element_coordinates(import_element, True)
         match_colour = no_matches_colour
         if len(matching_elements) == 1:
@@ -84,7 +91,8 @@ def compare_atp_data(import_xml, osm_object):
             result_geojson['features'].append(Feature(geometry=osm_point, properties=osm_properties))
     with open("my_points.geojson", "w", encoding='utf-8') as outfile:
         outfile.write(geojson.dumps(result_geojson, indent=2, sort_keys=True))
-            
+    import_xml.write(f"export.xml", pretty_print=True, xml_declaration=True, encoding="UTF-8")
+
 def get_element_coordinates(element, isxml):
     my_point = None
     if isxml:
@@ -95,14 +103,6 @@ def get_element_coordinates(element, isxml):
         else:
             return (float(element['center']['lon']), float(element['center']['lat']))
 
-def search_hash_in_osm_elements(jsonobj, target_hash):
-    elements = []
-    for element in jsonobj['elements']:
-        if 'hashes' in element and target_hash in element['hashes']:
-            element['matched'] = 'yes'
-            elements.append(element)
-    return elements
-
 def search_matching_osm_elements(jsonobj, matching_tags):
     elements = []
     key_value_pairs = [(elem.get("k"), elem.get("v")) for elem in matching_tags]
@@ -111,7 +111,6 @@ def search_matching_osm_elements(jsonobj, matching_tags):
             element['matched'] = 'yes'
             elements.append(element)
     return elements
-                
 
 def get_matching_tags(import_elements):
     matching_tags = []
