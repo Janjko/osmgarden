@@ -12,6 +12,7 @@ one_match_colour = '#00FF00'
 more_matches_colour = '#0000FF'
 no_matches_colour = '#FF0000'
 not_matched_osm_colour = '#FFFFFF'
+has_matching_tags_but_no_match_colour = '#DDDDDD'
 
 # Right now only overpass querys
 def get_fresh_osm_data(xml_data):
@@ -33,7 +34,8 @@ def compare_atp_data(import_xml, osm_object):
     spiders = import_xml.xpath('//@atp-spider')
     spiders = list( dict.fromkeys(spiders) )
     import_elements = import_xml.xpath('/osm/child::*')
-    matching_tags = get_matching_tags(import_elements)
+    matching_tag_keys = get_matching_tags(import_elements)
+
     for osm_element in osm_object['elements']:
         if not('ref' in osm_element['tags']):
             continue
@@ -45,7 +47,8 @@ def compare_atp_data(import_xml, osm_object):
     for import_element in import_elements:
         if import_element.tag == "domain":
             continue
-        matching_elements = search_hash_in_osm_elements(osm_object, import_element.attrib['atp-id'])
+        matching_tags = import_element.xpath("./tag[@function='match']")
+        matching_elements = search_matching_osm_elements(osm_object, matching_tags)
         import_coords = get_element_coordinates(import_element, True)
         match_colour = no_matches_colour
         if len(matching_elements) == 1:
@@ -68,9 +71,13 @@ def compare_atp_data(import_xml, osm_object):
         import_feature = Feature(geometry=Point(import_coords), properties=import_properties)
         result_geojson['features'].append(import_feature)
     for osm_element in osm_object['elements']:
-        if 'matched' not in osm_element:
+        if 'matched' not in osm_element or osm_element['matched'] != 'yes':
             osm_point = Point(get_element_coordinates(osm_element, False))
             osm_properties  = { "marker-color": f"{not_matched_osm_colour}"}
+            for tag_combination in matching_tag_keys:
+                if all(key in osm_element['tags'].keys() for key in tag_combination):
+                    osm_properties  = { "marker-color": f"{has_matching_tags_but_no_match_colour}"}
+
             for tagkey, tagvalue in osm_element['tags'].items():
                 osm_properties[tagkey] = tagvalue
             osm_properties['osm_link'] = f'https://osm.org/{osm_element["type"]}/{osm_element["id"]}'
@@ -95,6 +102,16 @@ def search_hash_in_osm_elements(jsonobj, target_hash):
             element['matched'] = 'yes'
             elements.append(element)
     return elements
+
+def search_matching_osm_elements(jsonobj, matching_tags):
+    elements = []
+    key_value_pairs = [(elem.get("k"), elem.get("v")) for elem in matching_tags]
+    for element in jsonobj['elements']:
+        if all(key in element['tags'] and element['tags'][key] == value for key, value in key_value_pairs):
+            element['matched'] = 'yes'
+            elements.append(element)
+    return elements
+                
 
 def get_matching_tags(import_elements):
     matching_tags = []
