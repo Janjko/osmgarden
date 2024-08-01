@@ -91,7 +91,8 @@ def compare_atp_data(import_xml, osm_object):
             result_geojson['features'].append(Feature(geometry=osm_point, properties=osm_properties))
     with open("my_points.geojson", "w", encoding='utf-8') as outfile:
         outfile.write(geojson.dumps(result_geojson, indent=2, sort_keys=True))
-    import_xml.write(f"export.xml", pretty_print=True, xml_declaration=True, encoding="UTF-8")
+    xml_file_name = import_xml.getroot().attrib['timestamp_osm_base'].replace(":", "_")
+    import_xml.write(f"compare_results/{xml_file_name}.xml", pretty_print=True, xml_declaration=True, encoding="UTF-8")
 
 def get_element_coordinates(element, isxml):
     my_point = None
@@ -134,4 +135,6 @@ for filename in os.listdir(directory_path):
         full_path = os.path.join(directory_path, filename)
         xml_doc = etree.parse(full_path)
         osm_object = get_fresh_osm_data(xml_doc)
+        xml_doc.getroot().attrib['timestamp_osm_base'] = osm_object['osm3s']['timestamp_osm_base']
+        xml_doc.getroot().attrib['timestamp_areas_base'] = osm_object['osm3s']['timestamp_areas_base']
         compare_atp_data(xml_doc, osm_object)
