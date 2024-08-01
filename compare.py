@@ -7,6 +7,7 @@ import base64
 from geojson import FeatureCollection, Feature, Point
 import geojson
 import geopy.distance
+from pathlib import Path
 
 one_match_colour = '#00FF00'
 more_matches_colour = '#0000FF'
@@ -30,7 +31,7 @@ def compute_hash(ref, spider_name) -> str:
     sha1.update(spider_name.encode("utf8"))
     return base64.urlsafe_b64encode(sha1.digest()).decode("utf8")
 
-def compare_atp_data(import_xml, osm_object):
+def compare_atp_data(import_xml, osm_object, name):
     spiders = import_xml.xpath('//@atp-spider')
     spiders = list( dict.fromkeys(spiders) )
     import_elements = import_xml.xpath('/osm/child::*')
@@ -54,7 +55,8 @@ def compare_atp_data(import_xml, osm_object):
         for matching_element in matching_elements:
             etree.SubElement(matches_xml, matching_element['type'],
                                           id=str(matching_element['id']),
-                                          version=str(matching_element['version']))
+                                          version=str(matching_element['version']),
+                                          changeset=str(matching_element['changeset']))
             
         import_coords = get_element_coordinates(import_element, True)
         match_colour = no_matches_colour
@@ -91,7 +93,8 @@ def compare_atp_data(import_xml, osm_object):
             result_geojson['features'].append(Feature(geometry=osm_point, properties=osm_properties))
     with open("my_points.geojson", "w", encoding='utf-8') as outfile:
         outfile.write(geojson.dumps(result_geojson, indent=2, sort_keys=True))
-    xml_file_name = import_xml.getroot().attrib['timestamp_osm_base'].replace(":", "_")
+    xml_file_name = name + '@' + import_xml.getroot().attrib['timestamp_osm_base'].replace(":", "_")
+    Path("./compare_results").mkdir(parents=True, exist_ok=True)
     import_xml.write(f"compare_results/{xml_file_name}.xml", pretty_print=True, xml_declaration=True, encoding="UTF-8")
 
 def get_element_coordinates(element, isxml):
@@ -132,9 +135,10 @@ def list_of_lists_contains_list(a, b):
 directory_path = './import_xml_generated'
 for filename in os.listdir(directory_path):
     if filename.endswith('.xml'):
+        name = filename.rstrip('.xml')
         full_path = os.path.join(directory_path, filename)
         xml_doc = etree.parse(full_path)
         osm_object = get_fresh_osm_data(xml_doc)
         xml_doc.getroot().attrib['timestamp_osm_base'] = osm_object['osm3s']['timestamp_osm_base']
         xml_doc.getroot().attrib['timestamp_areas_base'] = osm_object['osm3s']['timestamp_areas_base']
-        compare_atp_data(xml_doc, osm_object)
+        compare_atp_data(xml_doc, osm_object, name)

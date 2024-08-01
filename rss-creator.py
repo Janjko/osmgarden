@@ -11,6 +11,7 @@ from xmldiff import main, actions
 from lxml import etree
 import hashlib
 import base64
+from pathlib import Path
 
 class change_status(str, Enum):
     CREATE_NONE = 'CREATE_NONE'
@@ -22,8 +23,11 @@ class change_status(str, Enum):
 
 
 CHANGE_STATUS = 'change_status'
-ELEMENT_REF = 'element_ref'
+ELEMENT_LINK = 'element_link'
 OSM_ID = 'osm_id'
+NEW_TIMESTAMP = 'new_osm_timestamp'
+OLD_TIMESTAMP = 'old_osm_timestamp'
+CHANGESET = 'changeset'
 
 RSS_RAW_FILENAME = "rss_raw.json"
 #RSS_FILENAME = "rss.xml"
@@ -68,8 +72,8 @@ parser.add_argument('-i', '--inspected', type=argparse.FileType('r',
 parser.add_argument(
     '-r', '--rss', type=argparse.FileType('w'), help='RSS XML file')
 
-options = parser.parse_args(["-n", "C:\\Users\\janko\\source\\osmgarden\\compare_results\\2024-08-01T11_38_12Z.xml", "-i",
-                           "C:\\Users\\janko\\source\\osmgarden\\compare_results\\2024-08-01T10_59_31Z.xml", "-r", "C:\\Users\\janko\\source\\osmgarden\\rss\\rss.xml"])
+options = parser.parse_args(["-n", "C:\\Users\\janko\\source\\osmgarden\\compare_results\\konzum_hr@2024-08-01T20_07_30Z.xml", "-i",
+                           "C:\\Users\\janko\\source\\osmgarden\\compare_results\\konzum_hr@2024-08-01T19_31_54Z.xml", "-r", "C:\\Users\\janko\\source\\osmgarden\\rss\\rss.xml"])
 
 #options = parser.parse_args()
 
@@ -93,8 +97,14 @@ diffs = main.diff_trees(oldXml, newXml,
 
 for diff in diffs:
     if isinstance(diff, actions.InsertAttrib) and diff.name == 'id' and  newXml.xpath(diff.node)[0].getparent().tag == 'matches' and newXml.xpath(diff.node)[0].tag in ['node', 'way', 'relation']:
+        element_type = newXml.xpath(diff.node)[0].tag
+        element_id = newXml.xpath(diff.node)[0].attrib['id']
+        element_changeset = newXml.xpath(diff.node)[0].attrib['changeset']
         rss_raw.append({CHANGE_STATUS: change_status.CREATE_NONE,
-                                ELEMENT_REF: newXml.xpath(diff.node)[0].getparent().getparent().xpath('./tag[@k="ref"]/@v')})
+                        ELEMENT_LINK: f'https://osm.org/{element_type}/{element_id}',
+                        NEW_TIMESTAMP: newXml.getroot().attrib['timestamp_osm_base'],
+                        OLD_TIMESTAMP: oldXml.getroot().attrib['timestamp_osm_base'],
+                        CHANGESET: f'https://www.openstreetmap.org/changeset/{element_changeset}'})
 
 with open(RSS_RAW_FILENAME, 'w') as fp:
     json.dump(rss_raw, fp)
@@ -103,16 +113,20 @@ for entry in rss_raw:
     fe = fg.add_entry()
     if entry[CHANGE_STATUS] == change_status.CREATE_NONE or entry[CHANGE_STATUS] == change_status.MODIFY_NONE:
         fe.title("Element ispravno ucrtan.")
-        fe.description('Ispravno ucrtan element ' + str(entry[ELEMENT_REF]))
+        fe.description(f'Ispravno ucrtan <a href="{str(entry[ELEMENT_LINK])}">element</a> ')
+        fe.link(entry[CHANGESET])
     if entry[CHANGE_STATUS] == change_status.NONE_CREATE or entry[CHANGE_STATUS] == change_status.MODIFY_CREATE:
         fe.title("Element obrisan!")
-        fe.description('Element ' + str(entry[ELEMENT_REF]) + ' obrisan, ili je izgubio osnovne tagove.')
+        fe.description(f'<a href="{str(entry[ELEMENT_LINK])}">Element</a> obrisan, ili je izgubio osnovne tagove.')
+        fe.link(entry[CHANGESET])
     if entry[CHANGE_STATUS] == change_status.NONE_MODIFY:
         fe.title("Elementu pokvareni tagovi.")
-        fe.description('Elementu ' + str(entry[ELEMENT_REF]) + ' pokvareni tagovi.')
+        fe.description(f'<a href="{str(entry[ELEMENT_LINK])}">Elementu</a> pokvareni tagovi.')
+        fe.link(entry[CHANGESET])
     if entry[CHANGE_STATUS] == change_status.CREATE_MODIFY:
         fe.title("Element ucrtan, ali sa lošim tagovima.")
-        fe.description('Element ' + str(entry[ELEMENT_REF]) + ' ucrtan, ali sa lošim tagovima.')
+        fe.description(f'<a href="{str(entry[ELEMENT_LINK])}">Element</a> ucrtan, ali sa lošim tagovima.')
+        fe.link(entry[CHANGESET])
 
 fg.rss_str(pretty=True)
 fg.rss_file(options.rss.name)
