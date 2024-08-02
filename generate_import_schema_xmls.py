@@ -10,6 +10,9 @@ def create_new_import_xmls(zip_file_path):
     with open(xsd_file) as f:
         xmlschema_doc = etree.parse(f)
         xmlschema = etree.XMLSchema(xmlschema_doc)
+    
+    if not os.path.exists(directory_path):
+        os.makedirs(directory_path)
     for filename in os.listdir(directory_path):
         if filename.endswith('.xml'):
             full_path = os.path.join(directory_path, filename)
