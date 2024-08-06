@@ -6,13 +6,13 @@ from collections import namedtuple
 import requests
 
 generated_imports_dir = "./import_xml_generated/"
-Result = namedtuple('Result', ['osm_type', 'id', 'changeset', 'timestamp', 'version', 'tags', 'matched'])
+Result = namedtuple('Result', ['osm_type', 'id', 'changeset', 'timestamp', 'version', 'tags', 'lat', 'lon'])
 osm_extracts_folder = "./osm_extracts"
 compare_results_folder = "./compare_results"
 
 class Comparer(object):
     def __init__(self, name, matching_tags, import_doc, timestamp):
-        self.results = []
+        self.matches = []
         self.name = name
         self.matching_tags = matching_tags
         self.import_doc = import_doc
@@ -27,26 +27,45 @@ class Comparer(object):
 
     def process(self, o, osm_type):
         if len(o.tags) >= len(self.matching_tags) and self.is_match(o.tags):
+            if osm_type == 'node':
+                element_lat = o.location.lat
+                element_lon = o.location.lon
+            if osm_type == 'way':
+                element_lat = o.nodes[0].location.lat
+                element_lon = o.nodes[0].location.lon
+            self.matches.append(Result(osm_type=osm_type,
+                                       id=o.id,
+                                       changeset=o.changeset,
+                                       timestamp=o.timestamp,
+                                       version=o.version,
+                                       tags=dict(o.tags),
+                                       lat=element_lat,
+                                       lon = element_lon  ))
+
+    def match_results(self):
+        for m in self.matches:
             matched = False
             for import_element in self.import_elements:
                 if import_element.tag == "domain":
                     continue
                 matching_tags = import_element.findall("./tag[@function='match']")
                 key_value_pairs = [(elem.get("k"), elem.get("v")) for elem in matching_tags]
-                if all(key in o.tags and o.tags[key] == value for key, value in key_value_pairs):
-                    self.add_to_matching_elements(import_element, osm_type, o.id, o.version)
+                if all(key in m.tags and m.tags[key] == value for key, value in key_value_pairs):
+                    self.add_to_matching_elements(import_element, m.osm_type, m.id, m.version, m.lat, m.lon)
                     continue
             if matched != True:
-                    self.add_to_matching_elements(import_element.getparent(), osm_type, o.id, o.version)
+                    self.add_to_matching_elements(import_element.getparent(), m.osm_type, m.id, m.version, m.lat, m.lon)
             #self.results.append(Result(osm_type, o.id, o.changeset, o.timestamp, o.version, dict(o.tags), matched))
     
-    def add_to_matching_elements(self, xml_element, osm_type, osm_id, osm_version):
+    def add_to_matching_elements(self, xml_element, osm_type, osm_id, osm_version, osm_lat, osm_lon):
         matches_xml = xml_element.find('matches')
         if matches_xml == None:
             matches_xml = etree.SubElement(xml_element, 'matches')
         etree.SubElement(matches_xml, osm_type,
                                     id=str(osm_id),
-                                    version=str(osm_version))
+                                    version=str(osm_version),
+                                    lat=str(osm_lat),
+                                    lon=str(osm_lon))
 
     def publish_xml(self):
         xml_file_name = self.name + '@' + self.timestamp.replace(":", "_")
@@ -86,7 +105,7 @@ def main(osmfile, comparers):
 
     handler = FileListHandler(comparers)
 
-    handler.apply_file(osmfile)
+    handler.apply_file(osmfile, locations=True)
 
     return 0
 
@@ -115,6 +134,7 @@ if __name__ == '__main__':
 
     main(osm_file_path, comparers)
     for comparer in comparers:
+        comparer.match_results()
         comparer.publish_xml()
 
     print('uspjeh')
