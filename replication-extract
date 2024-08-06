@@ -1,0 +1,63 @@
+import osmium as o
+import sys
+import os
+from lxml import etree
+from collections import namedtuple
+
+generated_imports_dir = "./import_xml_generated/"
+Result = namedtuple('Result', ['osm_type', 'id', 'changeset', 'timestamp'])
+
+class Comparer(object):
+    def __init__(self, name, matching_tags):
+        self.results = []
+        self.matching_tags = matching_tags
+
+    def is_match(self, tags) -> bool:
+        for key, value in self.matching_tags.items():
+            if key not in tags or tags[key]!=value:
+                return False
+        return True
+
+    def process(self, o, osm_type):
+        if len(o.tags) >= len(self.matching_tags) and self.is_match(o.tags):
+            self.results.append(Result(osm_type, o.id, o.changeset, o.timestamp))
+
+class FileListHandler(o.SimpleHandler):
+    def __init__(self, comparers):
+        super(FileListHandler, self).__init__()
+        self.comparers = comparers
+
+    def node(self, n):
+        for comparer in self.comparers:
+            comparer.process(n, 1)
+            
+    def way(self, w):
+        for comparer in self.comparers:
+            comparer.process(w, 2)
+            
+    def relation(self, r):
+        for comparer in self.comparers:
+            comparer.process(r, 3)
+
+
+def main(osmfile, comparers):
+
+    handler = FileListHandler(comparers)
+
+    handler.apply_file(osmfile)
+
+    return 0
+
+if __name__ == '__main__':
+    comparers = []
+    for filename in os.listdir(generated_imports_dir):
+        if filename.endswith('.xml'):
+            name = filename.rstrip('.xml')
+            full_path = os.path.join(generated_imports_dir, filename)
+            xml_doc = etree.parse(full_path)
+            tags={}
+            for tag in xml_doc.findall('domain//tag'):
+                tags[tag.attrib['k']] = tag.attrib['v']
+            comparers.append(Comparer(name, tags))
+    main("croatia-latest.osm.pbf", comparers)
+    print('uspjeh')

@@ -14,7 +14,9 @@ def create_new_import_xmls(zip_file_path):
     if not os.path.exists(directory_path):
         os.makedirs(directory_path)
     for filename in os.listdir(directory_path):
+        name=''
         if filename.endswith('.xml'):
+            name = filename.rstrip('.xml')
             full_path = os.path.join(directory_path, filename)
             xml_doc = etree.parse(full_path)
             if xmlschema.validate(xml_doc):
@@ -27,7 +29,7 @@ def create_new_import_xmls(zip_file_path):
                         template_elements[0].getparent().append(child)
                     template_elements[0].getparent().remove(template_elements[0])
         Path("./import_xml_generated").mkdir(parents=True, exist_ok=True)
-        xml_doc.write(f"import_xml_generated/{spider}.xml", pretty_print=True, xml_declaration=True, encoding="UTF-8")
+        xml_doc.write(f"import_xml_generated/{name}.xml", pretty_print=True, xml_declaration=True, encoding="UTF-8")
 
     
 def get_atp_object(zip_file_path, spider):
