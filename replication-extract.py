@@ -43,19 +43,20 @@ class Comparer(object):
                                        lon = element_lon  ))
 
     def match_results(self):
-        for m in self.matches:
+        for osm_el in self.matches:
             matched = False
             for import_element in self.import_elements:
                 if import_element.tag == "domain":
                     continue
                 matching_tags = import_element.findall("./tag[@function='match']")
                 key_value_pairs = [(elem.get("k"), elem.get("v")) for elem in matching_tags]
-                if all(key in m.tags and m.tags[key] == value for key, value in key_value_pairs):
-                    self.add_to_matching_elements(import_element, m.osm_type, m.id, m.version, m.lat, m.lon)
-                    continue
+                if all(key in osm_el.tags and osm_el.tags[key] == value for key, value in key_value_pairs):
+                    self.add_to_matching_elements(import_element, osm_el.osm_type, osm_el.id, osm_el.version, osm_el.lat, osm_el.lon)
+                    matched = True
+                    break
             if matched != True:
-                    self.add_to_matching_elements(import_element.getparent(), m.osm_type, m.id, m.version, m.lat, m.lon)
-            #self.results.append(Result(osm_type, o.id, o.changeset, o.timestamp, o.version, dict(o.tags), matched))
+                    self.add_to_matching_elements(import_element.getparent(), osm_el.osm_type, osm_el.id, osm_el.version, osm_el.lat, osm_el.lon)
+
     
     def add_to_matching_elements(self, xml_element, osm_type, osm_id, osm_version, osm_lat, osm_lon):
         matches_xml = xml_element.find('matches')
