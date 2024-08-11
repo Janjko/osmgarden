@@ -13,24 +13,13 @@ import os
 import json
 from datetime import datetime
 from collections import namedtuple
+from comparer import Comparer, Result
+import time
 
+directory_path = "./compare_results"
+osm_extracts_folder = "./osm_extracts"
 generated_imports_dir = "./import_xml_generated/"
 rss_dir = "./rss"
-Result = namedtuple('Result', ['comparer_name', 'event', 'type', 'id', 'changeset', 'timestamp'])
-class Comparer(object):
-
-    def __init__(self, name, matching_tags, server_url ):
-        self.name = name
-        self.matching_tags = matching_tags
-        self.server_url = server_url
-
-    def is_match(self, tags) -> bool:
-        for matching_key in self.matching_tags.keys():
-            if matching_key not in tags:
-                return False
-        return True
-
-
 
 class Stats(object):
 
@@ -42,38 +31,91 @@ class Stats(object):
         if o.deleted:
             for comparer in self.comparers:
                 if len(o.tags)>0 and comparer.is_match(o.tags):
-                    self.results.append(Result(comparer.name, 'del', o.id, o.changeset, o.timestamp))
+                    self.results.append(Result(comparer.name, 'del', o.id, o.changeset))
         elif o.version == 1:
-            print(f"Add   : {o.timestamp.strftime('%Y-%m-%d')} - {str(o.tags)}")
+            for comparer in self.comparers:
+                if len(o.tags)>0 and comparer.is_match(o.tags):
+                    self.results.append(Result(comparer.name, 'add', o.id, o.changeset))
         else:
-            print(f"Modify: {o.timestamp.strftime('%Y-%m-%d')} - {str(o.tags)}")
+            for comparer in self.comparers:
+                if len(o.tags)>0 and comparer.is_match(o.tags):
+                    self.results.append(Result(comparer.name, 'mod', o.id, o.changeset))
 
-    def outstats(self, prefix):
-        print("%s added: %d" % (prefix, self.added))
-        print("%s modified: %d" % (prefix, self.modified))
-        print("%s deleted: %d" % (prefix, self.deleted))
 
 class FileStatsHandler(o.SimpleHandler):
     def __init__(self, comparers):
         super(FileStatsHandler, self).__init__()
+        self.comparers = comparers
         self.nodes = Stats(comparers)
         self.ways = Stats(comparers)
         self.rels = Stats(comparers)
 
     def node(self, n):
-        self.nodes.process(n)
+        if n.deleted:
+            if len(n.tags) > 0:
+                for comparer in self.comparers:
+                    comparer.process_deleted(n)
+        elif o.version == 1:
+            if len(n.tags) > 0:
+                for comparer in self.comparers:
+                    comparer.process_added(n)
+        else:
+            for comparer in self.comparers:
+                comparer.process_modified_node(n)
+
 
     def way(self, w):
-        self.ways.process(w)
+        if w.deleted:
+            if len(w.tags) > 0:
+                for comparer in self.comparers:
+                    comparer.process_deleted(w)
+        elif o.version == 1:
+            if len(w.tags) > 0:
+                for comparer in self.comparers:
+                    comparer.process_added(w)
+        else:
+            for comparer in self.comparers:
+                comparer.process_modified_way(w)
 
     def relation(self, r):
-        self.rels.process(r)
+        if r.deleted:
+            if len(r.tags) > 0:
+                for comparer in self.comparers:
+                    comparer.process_deleted(r)
+        elif o.version == 1:
+            if len(r.tags) > 0:
+                for comparer in self.comparers:
+                    comparer.process_added(r)
+        else:
+            for comparer in self.comparers:
+                comparer.process_modified_relation(r)
 
 
 if __name__ == '__main__':
     if len(sys.argv) != 4:
         print("Usage: python osm_replication_stats.py <server_url> <start_time> <max kB>")
-        sys.argv=["", "https://download.geofabrik.de/europe/croatia-updates/", "2024-08-03T19:00:00Z", "100000"]
+        sys.argv=["", "https://planet.openstreetmap.org/replication/minute/", "2024-08-11T21:21:00Z", "100000"]
+    
+    comparers = []
+
+    filenames = os.listdir(directory_path)
+    file_dict = {}
+    for filename in filenames:
+        name, date_str = os.path.splitext(filename)[0].split("@")
+        date = datetime.strptime(date_str, "%Y-%m-%dT%H_%M_%SZ")
+        if name not in file_dict or date > file_dict[name][0]:
+            file_dict[name] = [date, filename]
+
+
+    for import_name, import_date_filename in file_dict.items():
+
+        import_full_path = os.path.join(directory_path, import_date_filename[1])
+        import_doc = etree.parse(import_full_path)
+
+        tags={}
+        for tag in import_doc.findall('domain//tag'):
+            tags[tag.attrib['k']] = tag.attrib['v']
+        comparers.append(Comparer(import_name, tags, import_doc, import_date_filename[0], "./compare_results"))
 
     server_url = sys.argv[1]
     start = dt.datetime.strptime(sys.argv[2], "%Y-%m-%dT%H:%M:%SZ")
@@ -82,20 +124,15 @@ if __name__ == '__main__':
     maxkb = min(int(sys.argv[3]), 10 * 1024)
 
     repserv = rserv.ReplicationServer(server_url)
+    num = 0
 
     seqid = repserv.timestamp_to_sequence(start)
     print("Initial sequence id:", seqid)
 
-    for filename in os.listdir(generated_imports_dir):
-        if filename.endswith('.xml'):
-            name = filename.rstrip('.xml')
-            full_path = os.path.join(generated_imports_dir, filename)
-            xml_doc = etree.parse(full_path)
-            
-    h = FileStatsHandler([Comparer("konzum_hr", {"brand:wikidata": "Q518563", "shop": "convenience"}, "http:cro")])
-    seqid = repserv.apply_diffs(h, seqid, maxkb)
-    print("Final sequence id:", seqid)
-
-    h.nodes.outstats("Nodes")
-    h.ways.outstats("Ways")
-    h.rels.outstats("Relations")
+    h = FileStatsHandler(comparers)
+    while True:
+        lastseqid = repserv.apply_diffs(h, seqid, maxkb)
+        if lastseqid != None:
+            seqid = lastseqid + 1
+        time.sleep(5)
+        print("Final sequence id:", lastseqid)
