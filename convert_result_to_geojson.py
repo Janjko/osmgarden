@@ -5,6 +5,7 @@ import geojson
 import geopy.distance
 
 directory_path = "./compare_results"
+resulting_path = "./geojson"
 
 one_match_colour = '#00FF00'
 more_matches_colour = '#0000FF'
@@ -61,5 +62,7 @@ for key, value in file_dict.items():
     for not_matched in not_matched_osm_list:
         import_feature = create_geojson_element(not_matched, None, not_matched_osm_colour )
         result_geojson['features'].append(import_feature)
-    with open(key+".geojson", "w", encoding='utf-8') as outfile:
+    if not os.path.exists(resulting_path):
+        os.makedirs(resulting_path)
+    with open(os.path.join(resulting_path,key+".geojson"), "w", encoding='utf-8') as outfile:
         outfile.write(geojson.dumps(result_geojson, indent=2, sort_keys=True))
