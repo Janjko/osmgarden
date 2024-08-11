@@ -31,12 +31,12 @@ RSS_RAW_FILENAME = "rss_raw.json"
 
 fg = FeedGenerator()
 fg.id('http://lernfunk.de/media/654321')
-fg.title('Some Testfeed')
-fg.author({'name': 'John Doe', 'email': 'john@example.de'})
-fg.link(href='http://example.com', rel='alternate')
-fg.logo('http://ex.com/logo.jpg')
+fg.title('konzum_hr')
+fg.author({'name': 'Janko Mihelić', 'email': 'john@example.de'})
+fg.link(href='https://osm.org', rel='alternate')
+fg.logo('https://adnet.hr/wp-content/themes/vdtheme/images/logo.png')
 fg.subtitle('This is a cool feed!')
-fg.link(href='http://larskiesow.de/test.atom', rel='self')
+fg.link(href='https://adnet.hr/konzum_hr.xml', rel='self')
 fg.language('en')
 
 def compute_hash(tag_values) -> str:
@@ -75,7 +75,7 @@ parser.add_argument(
 
 options = parser.parse_args(["-r", "C:\\Users\\janko\\source\\osmgarden\\rss\\rss.xml"])
 directory_path = 'compare_results/'
-
+rss_directory_path = 'rss/'
 projectName = 'konzum_hr'
 
 reference_date = datetime(1, 1, 1)
@@ -129,7 +129,7 @@ while True:
         for new_element in newXml.xpath('/osm/child::*'):
             if new_element.tag == "domain":
                 continue
-            if old_element.attrib['id'] == old_element.attrib['id']:
+            if old_element.attrib['id'] == new_element.attrib['id']:
                 old_matches = old_element.findall('matches/')
                 new_matches = new_element.findall('matches/')
                 old_match_no = len(old_matches)
@@ -150,24 +150,15 @@ while True:
     with open(RSS_RAW_FILENAME, 'w') as fp:
         json.dump(rss_raw, fp)
 
-for entry in rss_raw:
+for rss_entry in rss_raw:
     fe = fg.add_entry()
-    if entry[CHANGE_STATUS] == CREATE_NONE or entry[CHANGE_STATUS] == MODIFY_NONE:
-        fe.title("Element ispravno ucrtan.")
-        fe.description(f'Ispravno ucrtan <a href="{str(entry[ELEMENT_LINK])}">element</a> ')
+    fe.title(f"Elementi obrisani ili pokvareni ({rss_entry[NEW_TIMESTAMP]})")
+    description = []
+    for entry in rss_entry[EVENTS]:
+        if entry[CHANGE_STATUS] == NONE_CREATE or entry[CHANGE_STATUS] == MODIFY_CREATE:
+            description.append(f'<a href="{str(entry[ELEMENT_LINK])}">Element</a> obrisan, ili je izgubio osnovne tagove.')
+        if entry[CHANGE_STATUS] == NONE_MODIFY:
+            description.append(f'<a href="{str(entry[ELEMENT_LINK])}">Elementu</a> pokvareni tagovi.')
+        fe.description('\n'.join(description))
 
-    if entry[CHANGE_STATUS] == NONE_CREATE or entry[CHANGE_STATUS] == MODIFY_CREATE:
-        fe.title("Element obrisan!")
-        fe.description(f'<a href="{str(entry[ELEMENT_LINK])}">Element</a> obrisan, ili je izgubio osnovne tagove.')
-
-    if entry[CHANGE_STATUS] == NONE_MODIFY:
-        fe.title("Elementu pokvareni tagovi.")
-        fe.description(f'<a href="{str(entry[ELEMENT_LINK])}">Elementu</a> pokvareni tagovi.')
-
-    if entry[CHANGE_STATUS] == CREATE_MODIFY:
-        fe.title("Element ucrtan, ali sa lošim tagovima.")
-        fe.description(f'<a href="{str(entry[ELEMENT_LINK])}">Element</a> ucrtan, ali sa lošim tagovima.')
-
-
-fg.rss_str(pretty=True)
-fg.rss_file(options.rss.name)
+fg.rss_file(rss_directory_path + projectName + '.xml')
