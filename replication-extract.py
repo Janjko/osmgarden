@@ -4,74 +4,14 @@ import os
 from lxml import etree
 from collections import namedtuple
 import requests
+from comparer import Comparer, Result
 
 generated_imports_dir = "./import_xml_generated/"
 Result = namedtuple('Result', ['osm_type', 'id', 'changeset', 'timestamp', 'version', 'tags', 'lat', 'lon'])
 osm_extracts_folder = "./osm_extracts"
 compare_results_folder = "./compare_results"
 
-class Comparer(object):
-    def __init__(self, name, matching_tags, import_doc, timestamp):
-        self.matches = []
-        self.name = name
-        self.matching_tags = matching_tags
-        self.import_doc = import_doc
-        self.import_elements = import_doc.xpath('/osm/child::*')
-        self.timestamp = timestamp
 
-    def is_match(self, tags) -> bool:
-        for key, value in self.matching_tags.items():
-            if key not in tags or tags[key]!=value:
-                return False
-        return True
-
-    def process(self, o, osm_type):
-        if len(o.tags) >= len(self.matching_tags) and self.is_match(o.tags):
-            if osm_type == 'node':
-                element_lat = o.location.lat
-                element_lon = o.location.lon
-            if osm_type == 'way':
-                element_lat = o.nodes[0].location.lat
-                element_lon = o.nodes[0].location.lon
-            self.matches.append(Result(osm_type=osm_type,
-                                       id=o.id,
-                                       changeset=o.changeset,
-                                       timestamp=o.timestamp,
-                                       version=o.version,
-                                       tags=dict(o.tags),
-                                       lat=element_lat,
-                                       lon = element_lon  ))
-
-    def match_results(self):
-        for osm_el in self.matches:
-            matched = False
-            for import_element in self.import_elements:
-                if import_element.tag == "domain":
-                    continue
-                matching_tags = import_element.findall("./tag[@function='match']")
-                key_value_pairs = [(elem.get("k"), elem.get("v")) for elem in matching_tags]
-                if all(key in osm_el.tags and osm_el.tags[key] == value for key, value in key_value_pairs):
-                    self.add_to_matching_elements(import_element, osm_el.osm_type, osm_el.id, osm_el.version, osm_el.lat, osm_el.lon)
-                    matched = True
-                    break
-            if matched != True:
-                    self.add_to_matching_elements(import_element.getparent(), osm_el.osm_type, osm_el.id, osm_el.version, osm_el.lat, osm_el.lon)
-
-    
-    def add_to_matching_elements(self, xml_element, osm_type, osm_id, osm_version, osm_lat, osm_lon):
-        matches_xml = xml_element.find('matches')
-        if matches_xml == None:
-            matches_xml = etree.SubElement(xml_element, 'matches')
-        etree.SubElement(matches_xml, osm_type,
-                                    id=str(osm_id),
-                                    version=str(osm_version),
-                                    lat=str(osm_lat),
-                                    lon=str(osm_lon))
-
-    def publish_xml(self):
-        xml_file_name = self.name + '@' + self.timestamp.replace(":", "_")
-        xml_file_path = os.path.join(compare_results_folder, xml_file_name + ".xml")
-        self.import_doc.write(xml_file_path, xml_declaration=True, encoding="UTF-8")
 
 class FileListHandler(o.SimpleHandler):
     def __init__(self, comparers):
