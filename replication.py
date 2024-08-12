@@ -15,8 +15,9 @@ from datetime import datetime
 from collections import namedtuple
 from comparer import Comparer, Result
 import time
+import requests
 
-directory_path = "./compare_results"
+compare_results_path = "./compare_results"
 osm_extracts_folder = "./osm_extracts"
 generated_imports_dir = "./import_xml_generated/"
 rss_dir = "./rss"
@@ -90,6 +91,14 @@ class FileStatsHandler(o.SimpleHandler):
             for comparer in self.comparers:
                 comparer.process_modified_relation(r)
 
+def get_fresh_osm_data(xml_doc):
+    url = xml_doc.find('/osm/domain/@overpass')
+    response = requests.get(url)
+    if response.status_code == 200:
+        return response.json()
+    else:
+        print(f"Error fetching data. Status code: {response.status_code}")
+        return None
 
 if __name__ == '__main__':
     if len(sys.argv) != 4:
@@ -98,7 +107,7 @@ if __name__ == '__main__':
     
     comparers = []
 
-    filenames = os.listdir(directory_path)
+    filenames = os.listdir(compare_results_path)
     file_dict = {}
     for filename in filenames:
         name, date_str = os.path.splitext(filename)[0].split("@")
@@ -109,13 +118,18 @@ if __name__ == '__main__':
 
     for import_name, import_date_filename in file_dict.items():
 
-        import_full_path = os.path.join(directory_path, import_date_filename[1])
+        import_full_path = os.path.join(compare_results_path, import_date_filename[1])
         import_doc = etree.parse(import_full_path)
+        
+        overpass_result = get_fresh_osm_data(import_doc)
 
         tags={}
         for tag in import_doc.findall('domain//tag'):
             tags[tag.attrib['k']] = tag.attrib['v']
-        comparers.append(Comparer(import_name, tags, import_doc, import_date_filename[0], "./compare_results"))
+        this_comparer = Comparer(import_name, tags, import_doc, import_date_filename[0], "./compare_results")
+        this_comparer.fill_base_data(overpass_result)
+        comparers.append(this_comparer)
+
 
     server_url = sys.argv[1]
     start = dt.datetime.strptime(sys.argv[2], "%Y-%m-%dT%H:%M:%SZ")

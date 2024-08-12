@@ -140,3 +140,14 @@ class Comparer(object):
         return [o.nodes[0].location.lat, o.nodes[0].location.lon]
     def get_lat_lon_relation(self, o):
         return [0,0]
+    
+    def fill_base_data(self, osm_object):
+        for osm_element in osm_object['elements']:
+            if osm_element['type']=='node':
+                lat = osm_element['lat']
+                lon = osm_element['lon']
+            else:
+                lat = osm_element['center']['lat']
+                lon = osm_element['center']['lon']
+            osm_el = Result(osm_element['type'], osm_element['id'], osm_element['changeset'], osm_element['version'], osm_element['tags'], lat, lon)
+            self.match_osm_element(osm_el)
