@@ -2,15 +2,16 @@ from lxml import etree
 from collections import namedtuple
 import os
 import osmium as o
+from datetime import datetime
 
 Result = namedtuple('Result', ['type', 'id', 'changeset', 'version', 'tags', 'lat', 'lon'])
 
 class Comparer(object):
-    def __init__(self, name, matching_tags, import_doc: etree.ElementTree, timestamp, compare_results_folder):
+    def __init__(self, name, import_doc: etree.ElementTree, timestamp, compare_results_folder):
         self.matches = []
         self.name = name
-        self.matching_tags = matching_tags
         self.import_doc = import_doc
+        self.matching_tags = dict([(foundtag.attrib['k'], foundtag.attrib['v']) for foundtag in import_doc.findall('domain//tag')])
         self.import_elements = import_doc.xpath('/osm/child::*[not(self::domain)]')
         self.import_osm_node_ids = [node.attrib['id'] for node in self.import_doc.findall('.//node')]
         self.import_osm_way_ids = [node.attrib['id'] for node in self.import_doc.findall('.//way')]
@@ -141,7 +142,10 @@ class Comparer(object):
     def get_lat_lon_relation(self, o):
         return [0,0]
     
-    def fill_base_data(self, osm_object):
+    def fill_base_data_with_overpass_json(self, osm_object):
+        date_str = osm_object['osm3s']['timestamp_osm_base']
+        self.timestamp = datetime.strptime(date_str, "%Y-%m-%dT%H:%M:%SZ")
+        self.import_doc.getroot().attrib['timestamp_osm_base'] = date_str
         for osm_element in osm_object['elements']:
             if osm_element['type']=='node':
                 lat = osm_element['lat']
@@ -150,4 +154,5 @@ class Comparer(object):
                 lat = osm_element['center']['lat']
                 lon = osm_element['center']['lon']
             osm_el = Result(osm_element['type'], osm_element['id'], osm_element['changeset'], osm_element['version'], osm_element['tags'], lat, lon)
+        
             self.match_osm_element(osm_el)

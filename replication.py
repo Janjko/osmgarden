@@ -92,7 +92,7 @@ class FileStatsHandler(o.SimpleHandler):
                 comparer.process_modified_relation(r)
 
 def get_fresh_osm_data(xml_doc):
-    url = xml_doc.find('/osm/domain/@overpass')
+    url = xml_doc.xpath('/osm/domain/@overpass')[0]
     response = requests.get(url)
     if response.status_code == 200:
         return response.json()
@@ -107,6 +107,8 @@ if __name__ == '__main__':
     
     comparers = []
 
+    comparer_list = [file_name.rstrip('.xml') for file_name in os.listdir(generated_imports_dir)]
+
     filenames = os.listdir(compare_results_path)
     file_dict = {}
     for filename in filenames:
@@ -115,11 +117,18 @@ if __name__ == '__main__':
         if name not in file_dict or date > file_dict[name][0]:
             file_dict[name] = [date, filename]
 
-
+    for comparer_name in comparer_list:
+        if comparer_name not in file_dict:
+            import_full_path = os.path.join(generated_imports_dir, comparer_name+".xml")
+            import_doc = etree.parse(import_full_path)
+            overpass_result = get_fresh_osm_data(import_doc)
+            overpass_timestamp = overpass_result['osm3s']['timestamp_osm_base']
+            new_comparer = Comparer(comparer_name, import_doc, overpass_timestamp, "./compare_results")
+            comparers.append(new_comparer)
+            new_comparer.fill_base_data_with_overpass_json(overpass_result)
     for import_name, import_date_filename in file_dict.items():
 
-        import_full_path = os.path.join(compare_results_path, import_date_filename[1])
-        import_doc = etree.parse(import_full_path)
+        
         
         overpass_result = get_fresh_osm_data(import_doc)
 
@@ -127,7 +136,7 @@ if __name__ == '__main__':
         for tag in import_doc.findall('domain//tag'):
             tags[tag.attrib['k']] = tag.attrib['v']
         this_comparer = Comparer(import_name, tags, import_doc, import_date_filename[0], "./compare_results")
-        this_comparer.fill_base_data(overpass_result)
+        this_comparer.fill_base_data_with_overpass_json(overpass_result)
         comparers.append(this_comparer)
 
 
