@@ -101,55 +101,49 @@ def get_fresh_osm_data(xml_doc):
         return None
 
 if __name__ == '__main__':
-    if len(sys.argv) != 4:
-        print("Usage: python osm_replication_stats.py <server_url> <start_time> <max kB>")
-        sys.argv=["", "https://planet.openstreetmap.org/replication/minute/", "2024-08-11T21:21:00Z", "100000"]
-    
+
+    server_url = "https://planet.openstreetmap.org/replication/minute/"
+
+    maxkb = 10 * 1024
+
+    repserv = rserv.ReplicationServer(server_url)
     comparers = []
 
     comparer_list = [file_name.rstrip('.xml') for file_name in os.listdir(generated_imports_dir)]
 
     filenames = os.listdir(compare_results_path)
-    file_dict = {}
+    compare_result_file_dict = {}
     for filename in filenames:
         name, date_str = os.path.splitext(filename)[0].split("@")
         date = datetime.strptime(date_str, "%Y-%m-%dT%H_%M_%SZ")
-        if name not in file_dict or date > file_dict[name][0]:
-            file_dict[name] = [date, filename]
+        if name not in compare_result_file_dict or date > compare_result_file_dict[name][0]:
+            compare_result_file_dict[name] = [date, filename]
+
+    seqid_list = []
 
     for comparer_name in comparer_list:
-        if comparer_name not in file_dict:
+        if comparer_name not in compare_result_file_dict:
             import_full_path = os.path.join(generated_imports_dir, comparer_name+".xml")
             import_doc = etree.parse(import_full_path)
             overpass_result = get_fresh_osm_data(import_doc)
-            overpass_timestamp = overpass_result['osm3s']['timestamp_osm_base']
-            new_comparer = Comparer(comparer_name, import_doc, overpass_timestamp, "./compare_results")
+            overpass_timestamp = dt.datetime.strptime(overpass_result['osm3s']['timestamp_osm_base'], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=dt.timezone.utc)
+            seqid = repserv.timestamp_to_sequence(overpass_timestamp)
+            seqid_list.append(seqid)
+            new_comparer = Comparer(comparer_name, import_doc, overpass_timestamp, seqid, compare_results_path)
             comparers.append(new_comparer)
             new_comparer.fill_base_data_with_overpass_json(overpass_result)
-    for import_name, import_date_filename in file_dict.items():
-
-        
-        
-        overpass_result = get_fresh_osm_data(import_doc)
-
-        tags={}
-        for tag in import_doc.findall('domain//tag'):
-            tags[tag.attrib['k']] = tag.attrib['v']
-        this_comparer = Comparer(import_name, tags, import_doc, import_date_filename[0], "./compare_results")
-        this_comparer.fill_base_data_with_overpass_json(overpass_result)
-        comparers.append(this_comparer)
+        else:
+            compare_results_filename = os.path.join(compare_results_path, compare_result_file_dict[comparer_name][1] )
+            import_doc = etree.parse(compare_results_filename)
+            import_doc_timestamp = dt.datetime.strptime(import_doc.getroot().attrib['timestamp_osm_base'], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=dt.timezone.utc)
+            seqid = import_doc.getroot().attrib['seqid']
+            seqid_list.append(seqid)
+            existing_comparer = Comparer(comparer_name, import_doc, import_doc_timestamp, seqid, compare_results_path)
+            comparers.append(existing_comparer)
 
 
-    server_url = sys.argv[1]
-    start = dt.datetime.strptime(sys.argv[2], "%Y-%m-%dT%H:%M:%SZ")
-    if sys.version_info >= (3,0):
-        start = start.replace(tzinfo=dt.timezone.utc)
-    maxkb = min(int(sys.argv[3]), 10 * 1024)
 
-    repserv = rserv.ReplicationServer(server_url)
-    num = 0
-
-    seqid = repserv.timestamp_to_sequence(start)
+    seqid = min(seqid_list)
     print("Initial sequence id:", seqid)
 
     h = FileStatsHandler(comparers)

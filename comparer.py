@@ -2,12 +2,12 @@ from lxml import etree
 from collections import namedtuple
 import os
 import osmium as o
-from datetime import datetime
+import datetime as dt
 
 Result = namedtuple('Result', ['type', 'id', 'changeset', 'version', 'tags', 'lat', 'lon'])
 
 class Comparer(object):
-    def __init__(self, name, import_doc: etree.ElementTree, timestamp, compare_results_folder):
+    def __init__(self, name, import_doc: etree.ElementTree, timestamp, seqid, compare_results_folder):
         self.matches = []
         self.name = name
         self.import_doc = import_doc
@@ -18,6 +18,8 @@ class Comparer(object):
         self.import_osm_relation_ids = [node.attrib['id'] for node in self.import_doc.findall('.//relation')]
         self.timestamp = timestamp
         self.compare_results_folder = compare_results_folder
+        self.seqid = seqid
+        import_doc.getroot().attrib['seqid'] = str(self.seqid)
 
     def is_match(self, tags) -> bool:
         for key, value in self.matching_tags.items():
@@ -115,7 +117,7 @@ class Comparer(object):
                 print (f"OSM Element id {osm_elem.type} {osm_elem.id} changed")
             else:
                 self.remove_match(osm_elem.type, osm_elem.id)
-                print (f"OSM Element id {osm_elem.type} {osm_elem.id} not in set anymore")
+                print (f"OSM Element id {osm_elem.type} {osm_elem.id} changed, and is not in set anymore")
         elif len(osm_elem.tags) > 0 and self.is_match(osm_elem.tags):
             self.match_osm_element(osm_elem)
             print (f"OSM Element id {osm_elem.type} {osm_elem.id} changed and so came to the set")
@@ -144,7 +146,7 @@ class Comparer(object):
     
     def fill_base_data_with_overpass_json(self, osm_object):
         date_str = osm_object['osm3s']['timestamp_osm_base']
-        self.timestamp = datetime.strptime(date_str, "%Y-%m-%dT%H:%M:%SZ")
+        self.timestamp = dt.datetime.strptime(date_str, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=dt.timezone.utc)
         self.import_doc.getroot().attrib['timestamp_osm_base'] = date_str
         for osm_element in osm_object['elements']:
             if osm_element['type']=='node':
@@ -156,3 +158,10 @@ class Comparer(object):
             osm_el = Result(osm_element['type'], osm_element['id'], osm_element['changeset'], osm_element['version'], osm_element['tags'], lat, lon)
         
             self.match_osm_element(osm_el)
+        
+        self.write_compare_result()
+
+    def write_compare_result(self):
+        file_name = self.name + '@' + self.import_doc.getroot().attrib['timestamp_osm_base'].replace(":", "_")+".xml"
+        path = os.path.join(self.compare_results_folder, file_name )
+        self.import_doc.write(path, pretty_print=True, xml_declaration=True, encoding="UTF-8")
