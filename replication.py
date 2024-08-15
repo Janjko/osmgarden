@@ -22,44 +22,20 @@ osm_extracts_folder = "./osm_extracts"
 generated_imports_dir = "./import_xml_generated/"
 rss_dir = "./rss"
 
-class Stats(object):
-
-    def __init__(self, comparers):
-        self.results = []
-        self.comparers = comparers
-
-    def process(self, o):
-        if o.deleted:
-            for comparer in self.comparers:
-                if len(o.tags)>0 and comparer.is_match(o.tags):
-                    self.results.append(Result(comparer.name, 'del', o.id, o.changeset))
-        elif o.version == 1:
-            for comparer in self.comparers:
-                if len(o.tags)>0 and comparer.is_match(o.tags):
-                    self.results.append(Result(comparer.name, 'add', o.id, o.changeset))
-        else:
-            for comparer in self.comparers:
-                if len(o.tags)>0 and comparer.is_match(o.tags):
-                    self.results.append(Result(comparer.name, 'mod', o.id, o.changeset))
-
-
 class FileStatsHandler(o.SimpleHandler):
     def __init__(self, comparers):
         super(FileStatsHandler, self).__init__()
         self.comparers = comparers
-        self.nodes = Stats(comparers)
-        self.ways = Stats(comparers)
-        self.rels = Stats(comparers)
 
     def node(self, n):
         if n.deleted:
             if len(n.tags) > 0:
                 for comparer in self.comparers:
-                    comparer.process_deleted(n)
-        elif o.version == 1:
+                    comparer.process_deleted_node(n)
+        elif n.version == 1:
             if len(n.tags) > 0:
                 for comparer in self.comparers:
-                    comparer.process_added(n)
+                    comparer.process_added_node(n)
         else:
             for comparer in self.comparers:
                 comparer.process_modified_node(n)
@@ -69,11 +45,11 @@ class FileStatsHandler(o.SimpleHandler):
         if w.deleted:
             if len(w.tags) > 0:
                 for comparer in self.comparers:
-                    comparer.process_deleted(w)
-        elif o.version == 1:
+                    comparer.process_deleted_way(w)
+        elif w.version == 1:
             if len(w.tags) > 0:
                 for comparer in self.comparers:
-                    comparer.process_added(w)
+                    comparer.process_added_way(w)
         else:
             for comparer in self.comparers:
                 comparer.process_modified_way(w)
@@ -82,11 +58,11 @@ class FileStatsHandler(o.SimpleHandler):
         if r.deleted:
             if len(r.tags) > 0:
                 for comparer in self.comparers:
-                    comparer.process_deleted(r)
-        elif o.version == 1:
+                    comparer.process_deleted_relation(r)
+        elif r.version == 1:
             if len(r.tags) > 0:
                 for comparer in self.comparers:
-                    comparer.process_added(r)
+                    comparer.process_added_relation(r)
         else:
             for comparer in self.comparers:
                 comparer.process_modified_relation(r)
@@ -136,7 +112,7 @@ if __name__ == '__main__':
             compare_results_filename = os.path.join(compare_results_path, compare_result_file_dict[comparer_name][1] )
             import_doc = etree.parse(compare_results_filename)
             import_doc_timestamp = dt.datetime.strptime(import_doc.getroot().attrib['timestamp_osm_base'], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=dt.timezone.utc)
-            seqid = import_doc.getroot().attrib['seqid']
+            seqid = int(import_doc.getroot().attrib['seqid'])
             seqid_list.append(seqid)
             existing_comparer = Comparer(comparer_name, import_doc, import_doc_timestamp, seqid, compare_results_path)
             comparers.append(existing_comparer)
@@ -149,6 +125,10 @@ if __name__ == '__main__':
     h = FileStatsHandler(comparers)
     while True:
         lastseqid = repserv.apply_diffs(h, seqid, maxkb)
+        for comparer in comparers:
+            if comparer.change_count > 0:
+                comparer.write_compare_result()
+                comparer.change_count = 0
         if lastseqid != None:
             seqid = lastseqid + 1
         time.sleep(5)
