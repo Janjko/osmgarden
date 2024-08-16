@@ -16,11 +16,14 @@ from collections import namedtuple
 from comparer import Comparer, Result
 import time
 import requests
+from collections import namedtuple
 
 compare_results_path = "./compare_results"
 osm_extracts_folder = "./osm_extracts"
 generated_imports_dir = "./import_xml_generated/"
 rss_dir = "./rss"
+compare_log_filename = 'compare_log.json'
+Compare_Log_Entry = namedtuple('Compare_Log_Entry', ['comparer', 'source_date', 'seqid', 'total', 'matched', 'unmatched', 'duplicates'])
 
 class FileStatsHandler(o.SimpleHandler):
     def __init__(self, comparers):
@@ -76,6 +79,19 @@ def get_fresh_osm_data(xml_doc):
         print(f"Error fetching data. Status code: {response.status_code}")
         return None
 
+def get_compare_log_entry(comparer, seqid):
+    return Compare_Log_Entry(comparer.name,
+                             comparer.import_doc.getroot().attrib['source-timestamp'],
+                             seqid,
+                             comparer.get_import_total(),
+                             len(comparer.import_osm_matched_node_ids)+
+                             len(comparer.import_osm_matched_way_ids)+
+                             len(comparer.import_osm_matched_relation_ids),
+                             len(comparer.import_osm_unmatched_node_ids)+
+                             len(comparer.import_osm_unmatched_way_ids)+
+                             len(comparer.import_osm_unmatched_relation_ids),
+                             comparer.get_duplicate_total() )
+
 if __name__ == '__main__':
 
     server_url = "https://planet.openstreetmap.org/replication/minute/"
@@ -85,17 +101,19 @@ if __name__ == '__main__':
     repserv = rserv.ReplicationServer(server_url)
     comparers = []
 
+    if not os.path.exists(compare_results_path):
+        os.makedirs(compare_results_path)
+
     comparer_list = [file_name.rstrip('.xml') for file_name in os.listdir(generated_imports_dir)]
 
     filenames = os.listdir(compare_results_path)
     compare_result_file_dict = {}
     for filename in filenames:
-        name, date_str = os.path.splitext(filename)[0].split("@")
-        date = datetime.strptime(date_str, "%Y-%m-%dT%H_%M_%SZ")
-        if name not in compare_result_file_dict or date > compare_result_file_dict[name][0]:
-            compare_result_file_dict[name] = [date, filename]
-
-    seqid_list = []
+        if filename.endswith('.xml'):
+            name, date_str = os.path.splitext(filename)[0].split("@")
+            date = datetime.strptime(date_str, "%Y-%m-%dT%H_%M_%SZ")
+            if name not in compare_result_file_dict or date > compare_result_file_dict[name][0]:
+                compare_result_file_dict[name] = [date, filename]
 
     for comparer_name in comparer_list:
         if comparer_name not in compare_result_file_dict:
@@ -103,22 +121,28 @@ if __name__ == '__main__':
             import_doc = etree.parse(import_full_path)
             overpass_result = get_fresh_osm_data(import_doc)
             overpass_timestamp = dt.datetime.strptime(overpass_result['osm3s']['timestamp_osm_base'], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=dt.timezone.utc)
-            seqid = repserv.timestamp_to_sequence(overpass_timestamp)
-            seqid_list.append(seqid)
-            new_comparer = Comparer(comparer_name, import_doc, overpass_timestamp, seqid, compare_results_path)
+            new_comparer = Comparer(comparer_name, import_doc, overpass_timestamp, compare_results_path )
             comparers.append(new_comparer)
             new_comparer.fill_base_data_with_overpass_json(overpass_result)
         else:
             compare_results_filename = os.path.join(compare_results_path, compare_result_file_dict[comparer_name][1] )
             import_doc = etree.parse(compare_results_filename)
             import_doc_timestamp = dt.datetime.strptime(import_doc.getroot().attrib['timestamp_osm_base'], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=dt.timezone.utc)
-            seqid = int(import_doc.getroot().attrib['seqid'])
-            seqid_list.append(seqid)
-            existing_comparer = Comparer(comparer_name, import_doc, import_doc_timestamp, seqid, compare_results_path)
+            existing_comparer = Comparer(comparer_name, import_doc, import_doc_timestamp, compare_results_path)
             comparers.append(existing_comparer)
 
 
 
+    compare_log_path = os.path.join(compare_results_path, compare_log_filename)
+
+
+    if not os.path.exists(compare_log_path):
+        with open(compare_log_path, 'x') as file: 
+            file.write("[]")
+    with open(compare_log_path, "r+") as f:
+        compare_log = json.load(f)
+
+    seqid_list = [log_entry.seqid for log_entry in compare_log]
     seqid = min(seqid_list)
     print("Initial sequence id:", seqid)
 
@@ -129,6 +153,9 @@ if __name__ == '__main__':
             if comparer.change_count > 0:
                 comparer.write_compare_result()
                 comparer.change_count = 0
+            compare_log.append(get_compare_log_entry(comparer, lastseqid))
+        with open(compare_log_path, "w") as f:
+            json.dump(compare_log, f)
         if lastseqid != None:
             seqid = lastseqid + 1
         time.sleep(5)

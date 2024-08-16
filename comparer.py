@@ -7,7 +7,7 @@ import datetime as dt
 Result = namedtuple('Result', ['type', 'id', 'changeset', 'version', 'tags', 'lat', 'lon'])
 
 class Comparer(object):
-    def __init__(self, name, import_doc: etree.ElementTree, timestamp, seqid, compare_results_folder):
+    def __init__(self, name, import_doc: etree.ElementTree, timestamp, compare_results_folder):
         self.matches = []
         self.name = name
         self.import_doc = import_doc
@@ -21,8 +21,6 @@ class Comparer(object):
         self.import_osm_unmatched_relation_ids = [int(node.attrib['id']) for node in self.import_doc.xpath('/osm/matches//relation')]
         self.timestamp = timestamp
         self.compare_results_folder = compare_results_folder
-        self.seqid = seqid
-        import_doc.getroot().attrib['seqid'] = str(self.seqid)
         self.change_count = 0
 
     def is_match_for_set(self, tags) -> bool:
@@ -34,6 +32,21 @@ class Comparer(object):
     def set_timestamp(self, new_timestamp):
         self.import_doc.getroot().attrib['timestamp_osm_base'] = new_timestamp.strftime("%Y-%m-%dT%H:%M:%SZ")
         self.timestamp = new_timestamp
+
+    def get_import_total(self):
+        return len(self.import_doc.xpath('/osm/*[not(self::domain) and not(self::matches)]'))
+
+    def get_matched_total(self):
+        return len(self.import_doc.xpath('/osm/*[not(self::domain) and not(self::matches)]//(node|way|relation)'))
+
+    def get_unmatched_total(self):
+        return len(self.import_doc.xpath('/osm/matches//(node|way|relation)'))
+    
+    def get_duplicate_total(self):
+        return len(self.import_doc.xpath('/osm/*[not(self::domain) and not(self::matches) and count(matches/*) > 1]'))
+
+    def get_source_timestamp(self):
+        return dt.fromisoformat( self.import_doc.getroot().attrib['source-timestamp'])
 
     def process(self, o, osm_type):
         if len(o.tags) >= len(self.matching_tags) and self.is_match_for_set(o.tags):

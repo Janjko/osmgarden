@@ -3,6 +3,7 @@ from lxml import etree
 import os
 import zipfile
 from pathlib import Path
+from datetime import datetime
 
 def create_new_import_xmls(zip_file_path):
     directory_path = './import_xml_templates'
@@ -28,6 +29,7 @@ def create_new_import_xmls(zip_file_path):
                     for child in new_osm_xml.xpath('/osm/child::*'):
                         template_elements[0].getparent().append(child)
                     template_elements[0].getparent().remove(template_elements[0])
+        xml_doc.getroot().attrib['source-timestamp'] = atp_object['dataset_attributes']['spider:collection_time']
         Path("./import_xml_generated").mkdir(parents=True, exist_ok=True)
         xml_doc.write(f"import_xml_generated/{name}.xml", pretty_print=True, xml_declaration=True, encoding="UTF-8")
 
@@ -50,6 +52,7 @@ def fill_template(template_xml, atp_object):
     matchtags = template_xml.xpath('/osm/template[@type="alltheplaces" and @spider]//tag[@template="yes" and @function="match"]/@k')
     first_child_tag = template_xml.xpath("//template/*[1]")[0]
     osm_xml = etree.Element("osm")
+
     for atp_entry in atp_object['features']:
         
         # Create a new XML object with the same tag
