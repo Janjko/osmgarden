@@ -80,17 +80,17 @@ def get_fresh_osm_data(xml_doc):
         return None
 
 def get_compare_log_entry(comparer, seqid):
-    return Compare_Log_Entry(comparer.name,
-                             comparer.import_doc.getroot().attrib['source-timestamp'],
-                             seqid,
-                             comparer.get_import_total(),
-                             len(comparer.import_osm_matched_node_ids)+
+    return {"name":comparer.name,
+            "timestamp": comparer.import_doc.getroot().attrib['source-timestamp'],
+            "seqid": seqid,
+            "total": comparer.get_import_total(),
+            "matched": len(comparer.import_osm_matched_node_ids)+
                              len(comparer.import_osm_matched_way_ids)+
                              len(comparer.import_osm_matched_relation_ids),
-                             len(comparer.import_osm_unmatched_node_ids)+
+            "unmatched": len(comparer.import_osm_unmatched_node_ids)+
                              len(comparer.import_osm_unmatched_way_ids)+
                              len(comparer.import_osm_unmatched_relation_ids),
-                             comparer.get_duplicate_total() )
+            "duplicate": comparer.get_duplicate_total() }
 
 if __name__ == '__main__':
 
@@ -105,6 +105,13 @@ if __name__ == '__main__':
         os.makedirs(compare_results_path)
 
     comparer_list = [file_name.rstrip('.xml') for file_name in os.listdir(generated_imports_dir)]
+
+    compare_log_path = os.path.join(compare_results_path, compare_log_filename)
+    if not os.path.exists(compare_log_path):
+        with open(compare_log_path, 'x') as file: 
+            file.write("[]")
+    with open(compare_log_path, "r+") as f:
+        compare_log = json.load(f)
 
     filenames = os.listdir(compare_results_path)
     compare_result_file_dict = {}
@@ -124,6 +131,8 @@ if __name__ == '__main__':
             new_comparer = Comparer(comparer_name, import_doc, overpass_timestamp, compare_results_path )
             comparers.append(new_comparer)
             new_comparer.fill_base_data_with_overpass_json(overpass_result)
+            new_comparer_seqid = repserv.timestamp_to_sequence(new_comparer.timestamp)
+            compare_log.append(get_compare_log_entry(new_comparer, new_comparer_seqid))
         else:
             compare_results_filename = os.path.join(compare_results_path, compare_result_file_dict[comparer_name][1] )
             import_doc = etree.parse(compare_results_filename)
@@ -133,30 +142,26 @@ if __name__ == '__main__':
 
 
 
-    compare_log_path = os.path.join(compare_results_path, compare_log_filename)
-
-
-    if not os.path.exists(compare_log_path):
-        with open(compare_log_path, 'x') as file: 
-            file.write("[]")
-    with open(compare_log_path, "r+") as f:
-        compare_log = json.load(f)
-
-    seqid_list = [log_entry.seqid for log_entry in compare_log]
-    seqid = min(seqid_list)
+    seqid_list = [int(log_entry['seqid']) for log_entry in compare_log]
+    if len(seqid_list) == 0:
+        max_date = max([value[0] for key, value in compare_result_file_dict.items()]).replace(tzinfo=dt.timezone.utc)
+        seqid = repserv.timestamp_to_sequence(max_date)
+    else:
+        seqid = max(seqid_list)
     print("Initial sequence id:", seqid)
 
     h = FileStatsHandler(comparers)
     while True:
         lastseqid = repserv.apply_diffs(h, seqid, maxkb)
-        for comparer in comparers:
-            if comparer.change_count > 0:
-                comparer.write_compare_result()
-                comparer.change_count = 0
-            compare_log.append(get_compare_log_entry(comparer, lastseqid))
-        with open(compare_log_path, "w") as f:
-            json.dump(compare_log, f)
         if lastseqid != None:
-            seqid = lastseqid + 1
+            for comparer in comparers:
+                if comparer.change_count > 0:
+                    comparer.write_compare_result()
+                    comparer.change_count = 0
+
+                compare_log.append(get_compare_log_entry(comparer, lastseqid))
+            with open(compare_log_path, "w") as f:
+                json.dump(compare_log, f)
+                seqid = lastseqid + 1
         time.sleep(5)
         print("Final sequence id:", lastseqid)
