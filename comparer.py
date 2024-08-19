@@ -186,7 +186,7 @@ class Comparer(object):
             else:
                 self.remove_match(osm_elem.type, osm_elem.id)
                 unmatched_ids.remove(o.id)
-                print (f"OSM Element id {osm_elem.type} {osm_elem.id} changed, was unmatched, but is out of the set now")
+                print (f"OSM Element id {osm_elem.type} {osm_elem.id} changed, was unmatched, and is out of the set now")
                 self.change_count += 1
         elif self.is_match_for_set(osm_elem.tags):
             if self.match_and_add_osm_element(osm_elem):
