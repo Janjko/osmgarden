@@ -107,12 +107,12 @@ class Comparer(object):
         if o.id in matched_ids:
             self.remove_match(osm_type, o.id)
             matched_ids.remove(o.id)
-            print (f"OSM Element id {osm_type} {id} was matched, now deleted")
+            print (f"OSM Element id {osm_type} {o.id} was matched, now deleted")
             self.change_count += 1
         elif o.id in unmatched_ids:
             self.remove_match(osm_type, o.id)
             unmatched_ids.remove(o.id)
-            print (f"OSM Element id {osm_type} {id} was unmatched, now deleted")
+            print (f"OSM Element id {osm_type} {o.id} was unmatched, now deleted")
             self.change_count += 1
     
     def process_added_node(self, o):
@@ -131,7 +131,7 @@ class Comparer(object):
                                           version=o.version,
                                           lat=location[0],
                                           lon=location[1]))
-            print (f"OSM Element id {osm_type} {id} added")
+            print (f"OSM Element id {osm_type} {o.id} added")
             self.change_count += 1
             if matched:
                 matched_ids.append(o.id)

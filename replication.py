@@ -17,6 +17,7 @@ from comparer import Comparer, Result
 import time
 import requests
 from collections import namedtuple
+import convert_result_to_geojson as gj
 
 compare_results_path = "./compare_results"
 osm_extracts_folder = "./osm_extracts"
@@ -104,14 +105,15 @@ if __name__ == '__main__':
     if not os.path.exists(compare_results_path):
         os.makedirs(compare_results_path)
 
-    comparer_list = [file_name.rstrip('.xml') for file_name in os.listdir(generated_imports_dir)]
-
     compare_log_path = os.path.join(compare_results_path, compare_log_filename)
-    if not os.path.exists(compare_log_path):
-        with open(compare_log_path, 'x') as file: 
+    try:
+        with open(compare_log_path, "r+") as f:
+            compare_log = json.load(f)
+    except:
+        with open(compare_log_path, 'w') as file: 
             file.write("[]")
-    with open(compare_log_path, "r+") as f:
-        compare_log = json.load(f)
+        compare_log = []
+
 
     filenames = os.listdir(compare_results_path)
     compare_result_file_dict = {}
@@ -121,6 +123,8 @@ if __name__ == '__main__':
             date = datetime.strptime(date_str, "%Y-%m-%dT%H_%M_%SZ")
             if name not in compare_result_file_dict or date > compare_result_file_dict[name][0]:
                 compare_result_file_dict[name] = [date, filename]
+
+    comparer_list = [file_name.rstrip('.xml') for file_name in os.listdir(generated_imports_dir)]
 
     for comparer_name in comparer_list:
         if comparer_name not in compare_result_file_dict:
@@ -157,6 +161,7 @@ if __name__ == '__main__':
             for comparer in comparers:
                 if comparer.change_count > 0:
                     comparer.write_compare_result()
+                    gj.create_geojson(comparer.name, comparer.import_doc)
                     comparer.change_count = 0
 
                 compare_log.append(get_compare_log_entry(comparer, lastseqid))

@@ -31,19 +31,7 @@ def create_geojson_element(import_element, osm_element, match_colour ):
     
 
 
-filenames = os.listdir(directory_path)
-
-file_dict = {}
-
-for filename in filenames:
-    name, date_str = os.path.splitext(filename)[0].split("@")
-    date = datetime.strptime(date_str, "%Y-%m-%dT%H_%M_%SZ")
-    if name not in file_dict or date > file_dict[name]:
-        file_dict[name] = date
-
-for key, value in file_dict.items():
-    date_str = value.strftime("%Y-%m-%dT%H_%M_%SZ")
-    xml_dict = etree.parse(os.path.join(directory_path, key + "@" + date_str + ".xml"))
+def create_geojson(name, xml_dict):
     one_match_list = xml_dict.xpath('/osm/*[not(self::domain) and count(matches/*) = 1]')
     more_matches_list = xml_dict.xpath('/osm/*[not(self::domain) and count(matches/*) > 1]')
     no_matches_list = xml_dict.xpath('/osm/*[not(self::domain) and not(self::matches) and count(matches/*) = 0]')
@@ -64,5 +52,5 @@ for key, value in file_dict.items():
         result_geojson['features'].append(import_feature)
     if not os.path.exists(resulting_path):
         os.makedirs(resulting_path)
-    with open(os.path.join(resulting_path,key+".geojson"), "w", encoding='utf-8') as outfile:
+    with open(os.path.join(resulting_path,name+".geojson"), "w", encoding='utf-8') as outfile:
         outfile.write(geojson.dumps(result_geojson, indent=2, sort_keys=True))
