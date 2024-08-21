@@ -3,6 +3,7 @@ import replicator
 import datetime as dt
 import pickle
 import os
+import time
 
 pickled_sets = "./pickled_sets.bin"
 
@@ -20,5 +21,7 @@ h = replicator.FileStatsHandler(sets, atp_data_load.match_to_set)
 maxkb = 10 * 1024
 while True:
     lastseqid = repserv.apply_diffs(h, seqid, maxkb)
+    print(str(lastseqid))
+    time.sleep(10)
     if lastseqid != None:
         seqid = lastseqid + 1

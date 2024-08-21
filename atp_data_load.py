@@ -65,7 +65,7 @@ def match_to_set(sets, tags, action):
         matched_key = operator_key
     if matched_key is not None:
         if ref_key in tags and tags[ref_key] in sets[tags[matched_key]].elements:
-            print(f"Matched element from set {sets[tags[matched_key]].name} and matched ref {tags[ref_key]}, action {action}" )
+            print(f"Matched element from set {sets[tags[matched_key]][0].name} and matched ref {tags[ref_key]}, action {action}" )
         else:
-            print(f"Matched element from set {sets[tags[matched_key]].name} but ref not matched, action {action}" )
+            print(f"Matched element from set {sets[tags[matched_key]][0].name} but ref not matched, action {action}" )
         
