@@ -6,7 +6,6 @@ import shutil
 from collections import namedtuple
 from collections import defaultdict
 import pickle
-import atp_data_load
 
 ATP_Set = namedtuple('ATP_Set', ['name', 'defining_tag', 'elements'])
 
@@ -16,10 +15,10 @@ class ATPDataManager:
         self.data_folder = data_folder
         self.unziped_data_foldername = os.path.join(self.data_folder, "output") # ATP zip unzips to this folder automaticaly
         self.atp_download_filename = os.path.join(self.data_folder, "atp_file.zip")
-        self.atp_pickeled_set_prefix = "atp_sets_"
+        self.atp_pickeled_set_elements_prefix = "atp_elements_"
         self.atp_pickeled_set_extension = ".bin"
-        self.sets = {}
-        self.atp_pickeled_set_file, self.current_atp_run_id = self.get_file_by_prefix(self.data_folder, self.atp_pickeled_set_prefix)
+        self.set_elements = {}
+        self.atp_pickeled_set_elements_file, self.current_atp_run_id = self.get_file_by_prefix(self.data_folder, self.atp_pickeled_set_elements_prefix)
 
     def delete_temp_files(self):
         if os.path.exists(self.unziped_data_foldername):
@@ -57,25 +56,30 @@ class ATPDataManager:
                 successUnzip = self.unzip_atp(self.atp_download_filename)
                 self.current_atp_run_id = last_run_id
                 os.remove(self.atp_download_filename)
-                self.sets = self.get_atp_sets()
+                self.set_elements = self.get_atp_sets()
 
                 new_data = True
         self.manage_pickles(new_data)
         self.delete_temp_files()
+        return new_data
 
     def manage_pickles(self, new_data_downloaded):
+        atp_pickeled_set_elements_file = os.path.join(self.data_folder, self.atp_pickeled_set_elements_prefix + self.current_atp_run_id + self.atp_pickeled_set_extension)
         if new_data_downloaded:
-            self.atp_pickeled_set_file = os.path.join(self.data_folder, self.atp_pickeled_set_prefix + self.current_atp_run_id + self.atp_pickeled_set_extension)
-            if os.path.exists(self.atp_pickeled_set_file):
-                shutil.rmtree(self.atp_pickeled_set_file)
-            with open(self.atp_pickeled_set_file, "wb") as f:
-                pickle.dump(self.sets, f)
+
+            if self.atp_pickeled_set_elements_file != None and os.path.exists(self.atp_pickeled_set_elements_file):
+                os.remove(self.atp_pickeled_set_elements_file)
+            if os.path.exists(atp_pickeled_set_elements_file):
+                os.remove(atp_pickeled_set_elements_file)
+            with open(atp_pickeled_set_elements_file, "wb") as f:
+                pickle.dump(self.set_elements, f)
+            self.atp_pickeled_set_elements_file = atp_pickeled_set_elements_file
         else:
-            if not os.path.exists(self.atp_pickeled_set_file):
+            if not os.path.exists(self.atp_pickeled_set_elements_file):
                 print("Error. No new set, and no saved set.")
             else:
-                with open(self.atp_pickeled_set_file, "rb") as f:
-                    self.sets = pickle.load(f)
+                with open(atp_pickeled_set_elements_file, "rb") as f:
+                    self.set_elements = pickle.load(f)
 
     def unzip_atp(self, zip_file):
         with zipfile.ZipFile(zip_file, 'r') as zip_ref:
@@ -109,36 +113,71 @@ class ATPDataManager:
                     print (f"File {filename} invalid")
                     continue
                 name = atp_object['dataset_attributes']['@spider']
-                common_tags = {}
-                temp_atm_items = []
-                for feature in atp_object["features"]:
-                    if 'ref' not in feature['properties']:
-                        continue
-                    properties = {key:value
-                                for key, value in feature['properties'].items()
-                                if key == 'brand:wikidata' or
-                                (key=='operator:wikidata' and 'brand:wikidata' not in feature['properties'])}
-                    if not common_tags:
-                        # Initialize common_properties with the first feature's properties
-                        common_tags = properties
-                    else:
-                        # Update common_properties with common key-value pairs
-                        common_tags = {
-                            key: value
-                            for key, value in properties.items()
-                            if key in common_tags and value == common_tags[key]
-                        }
-                    temp_atm_items.append(feature['properties']['ref'])
 
-                    
-                    defining_tag = atp_data_load.get_defining_tag(feature['properties'])
-                    if defining_tag == None:
-                        continue
-                if (len(common_tags)==1):
-                    wikidata_value = common_tags[next(iter(common_tags))]
+                dt = self.get_defining_tags(atp_object, name)
+                
+                wiki_tags = self.get_wiki_tags(atp_object)
+
+                ref_tags = self.get_ref_tags(atp_object)
+
+                if (len(wiki_tags)==1 and dt != None):
+                    wikidata_value = wiki_tags[next(iter(wiki_tags))]
                     if wikidata_value in sets:
-                        sets[wikidata_value].append(ATP_Set(name, defining_tag, temp_atm_items))
+                        sets[wikidata_value].append(ATP_Set(name, dt, ref_tags))
                     else:
-                        sets[wikidata_value] = [ATP_Set(name, defining_tag, temp_atm_items)]
-                print("Common key-value pairs:", common_tags)
+                        sets[wikidata_value] = [ATP_Set(name, dt, ref_tags)]
+                print("Common key-value pairs:", wiki_tags)
         return sets
+
+    def get_defining_tags(self, atp_object, name):
+        common_properties = {}
+        for feature in atp_object["features"]:
+
+            properties = {key:value
+                        for key, value in feature['properties'].items()
+                        if key in ['shop', 'amenity', 'tourism', 'office']}
+            if not common_properties:
+                # Initialize common_properties with the first feature's properties
+                common_properties = properties
+            else:
+                # Update common_properties with common key-value pairs
+                common_properties = {
+                    key: value
+                    for key, value in properties.items()
+                    if key in common_properties and value == common_properties[key]
+                }
+        if common_properties:
+            print(f"Common 'shop' or 'amenity' in set {name} is {next(iter(common_properties))} = {common_properties[next(iter(common_properties))]}")
+            return common_properties
+        else:
+            print(f"No common 'shop' or 'amenity' in set {name}")
+            return None
+        
+    def get_wiki_tags(self, atp_object):
+        common_tags = {}
+        for feature in atp_object["features"]:
+            if 'ref' not in feature['properties']:
+                continue
+            properties = {key:value
+                        for key, value in feature['properties'].items()
+                        if key == 'brand:wikidata' or
+                        (key=='operator:wikidata' and 'brand:wikidata' not in feature['properties'])}
+            if not common_tags:
+                # Initialize common_properties with the first feature's properties
+                common_tags = properties
+            else:
+                # Update common_properties with common key-value pairs
+                common_tags = {
+                    key: value
+                    for key, value in properties.items()
+                    if key in common_tags and value == common_tags[key]
+                }
+        return common_tags
+    
+    def get_ref_tags(self, atp_object):
+        temp_atm_items = []
+        for feature in atp_object["features"]:
+            if 'ref' not in feature['properties']:
+                continue
+            temp_atm_items.append(feature['properties']['ref'])
+        return temp_atm_items

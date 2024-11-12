@@ -6,6 +6,7 @@ import xml.etree.ElementTree as ET
 import libtorrent as lt
 import time
 from autosavearray import AutoSaveArray
+import osm_matching_to_atp as omta
 
 OSM_Set = namedtuple('OSM_Set', ['name', 'element'])
 
@@ -50,7 +51,7 @@ class OSMDataManager():
                     f.write(chunk)
         return local_filename
     
-    def download_osm(self):
+    def download_osm(self, force):
         """Download OSM extract.
 
         Data is downloaded into data_path, as planet-latest.osm.pbf.
@@ -86,6 +87,10 @@ class OSMDataManager():
                     self.way_list.delete_pickle_file()
                     self.relation_list.delete_pickle_file()
         
+        if force:
+            self.node_list.delete_pickle_file()
+            self.way_list.delete_pickle_file()
+            self.relation_list.delete_pickle_file()
         if (not self.node_list.file_exists() and not self.way_list.file_exists() and not self.relation_list.file_exists()):
 
             filtered_planet = os.path.join(self.data_folder, self.osm_filtered_filename_prefix + date_str + self.osm_extension)
@@ -109,42 +114,43 @@ class OSMDataManager():
         if not alreadyfiltered:
             writer = o.SimpleWriter(out_filename)
         
+        brand_matching_key = 'brand:wikidata'
         # only scan the ways of the file
-        for obj in o.FileProcessor(filename).with_filter(o.filter.KeyFilter('brand:wikidata')):
-            atp_set, element_ref = self.match_element_to_set(obj, sets, 'brand:wikidata')
-            if atp_set is None:
-                continue
+        for obj in o.FileProcessor(filename).with_filter(o.filter.KeyFilter(brand_matching_key)):
+            if obj.tags[brand_matching_key] in self.atp_sets:
+                matched_spider_name, matched_ref = omta.find_atp_name_and_ref_by_element(self.atp_sets[obj.tags[brand_matching_key]], obj.tags)
+            else:
+                matched_spider_name, matched_ref = None, None
             if obj.is_node():
-                nodes_list.append(obj.id, atp_set, element_ref)
+                self.process_osm_object(obj, nodes_list, matched_spider_name, matched_ref)
                 if not alreadyfiltered:
                     writer.add_node(obj)
-
             elif obj.is_way():
-                ways_list.append(obj.id, atp_set, element_ref)
+                self.process_osm_object(obj, ways_list, matched_spider_name, matched_ref)
                 if not alreadyfiltered:
                     writer.add_way(obj)
-
             elif obj.is_relation():
-                relations_list.append(obj.id, atp_set, element_ref)
+                self.process_osm_object(obj, relations_list, matched_spider_name, matched_ref)
                 if not alreadyfiltered:
                     writer.add_relation(obj)
 
-
-        for obj in o.FileProcessor(filename).with_filter(o.filter.KeyFilter('operator:wikidata')):
-            if 'brand:wikidata' not in obj.tags:
-                atp_set, element_ref = self.match_element_to_set(obj, sets, 'operator:wikidata')
-                if atp_set is None:
-                    continue
+        operator_matching_key = 'operator:wikidata'
+        for obj in o.FileProcessor(filename).with_filter(o.filter.KeyFilter(operator_matching_key)):
+            if brand_matching_key not in obj.tags:
+                if obj.tags[operator_matching_key] in self.atp_sets:
+                    matched_spider_name, matched_ref = omta.find_atp_name_and_ref_by_element(self.atp_sets[obj.tags[operator_matching_key]], obj.tags)
+                else:
+                    matched_spider_name, matched_ref = None, None
                 if obj.is_node():
-                    nodes_list.append(obj.id, atp_set, element_ref)
+                    self.process_osm_object(obj, nodes_list, matched_spider_name, matched_ref)
                     if not alreadyfiltered:
                         writer.add_node(obj)
                 elif obj.is_way():
-                    ways_list.append(obj.id, atp_set, element_ref)
+                    self.process_osm_object(obj, ways_list, matched_spider_name, matched_ref)
                     if not alreadyfiltered:
                         writer.add_way(obj)
                 elif obj.is_relation():
-                    relations_list.append(obj.id, atp_set, element_ref)
+                    self.process_osm_object(obj, relations_list, matched_spider_name, matched_ref)
                     if not alreadyfiltered:
                         writer.add_relation(obj)
 
@@ -156,17 +162,12 @@ class OSMDataManager():
             writer.close()
         return
 
-
-    def match_element_to_set(self, obj, sets, matching_tag):
-        if obj.tags[matching_tag] in sets:
-            for ATP_set in sets[obj.tags[matching_tag]]:
-                if 'ref' in obj.tags and obj.tags['ref'] in ATP_set.elements:
-                    return ATP_set.name, obj.tags['ref']
-                else:
-                    return ATP_set.name, ""
-        else:
-            return None, None
-
+    def process_osm_object(self, obj, set, spider_name, element_ref):
+        if spider_name is not None:
+            try:
+                set.append(obj.id, spider_name, element_ref, obj.timestamp)
+            except Exception as e:
+                print(e)
 
 
     def download_torrent(self, torrent_file, data_path):

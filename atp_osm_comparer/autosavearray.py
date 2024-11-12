@@ -2,7 +2,7 @@ import pickle
 from collections import namedtuple
 import os
 
-OSM_Set = namedtuple('OSM_Set', ['name', 'element'])
+OSM_Set = namedtuple('OSM_Set', ['name', 'element', 'timestamp'])
 
 class AutoSaveArray:
     def __init__(self, filename):
@@ -18,36 +18,39 @@ class AutoSaveArray:
         except (FileNotFoundError, EOFError):
             self.data = {}
 
-    def append(self, osm_id, name, element):
+    def append(self, osm_id, name, element, timestamp):
         # Create a new named tuple and append to the data array
-        record = OSM_Set(name, element)
+        record = OSM_Set(name, element, timestamp)
         if osm_id in self.data:
             raise Exception ("Element already in set.")
         self.data[osm_id] = record
 
-    def update_and_save(self, osm_id, name, element):
-        record = OSM_Set(name, element)
+    def update_and_save(self, osm_id, name, element, timestamp):
+        record = OSM_Set(name, element, timestamp)
         if self.data[osm_id] == record:
-            raise ("Updating element when it was already like that.")
+            raise Exception ("Updating element when it was already like that.")
         self.data[osm_id] = record
 
-        self.save()
+        self.save_and_notify(timestamp)
 
-    def append_and_save(self, osm_id, name, element):
-        self.append(osm_id, name, element)
-        self.save()
+    def append_and_save(self, osm_id, name, element, timestamp):
+        self.append(osm_id, name, element, timestamp)
+        self.save_and_notify(timestamp)
 
-    def delete_and_save(self, osm_id):
+    def delete_and_save(self, osm_id, timestamp):
         if osm_id not in self.data:
             raise Exception ("Element not in set.")
         self.data.pop(osm_id)
-        self.save()
+        self.save_and_notify(timestamp)
 
-    def save(self):
-        # Pickle the current state of the data array to the file
+    def save_and_notify(self, timestamp):
         with open(self.filename, 'wb') as f:
             pickle.dump(self.data, f)
-        self.notify_observers()
+        self.notify_observers(timestamp)
+
+    def save(self):
+        with open(self.filename, 'wb') as f:
+            pickle.dump(self.data, f)
 
     def get_all(self):
         # Return all records in the array
@@ -64,7 +67,7 @@ class AutoSaveArray:
     def register_observer(self, observer):
         self._observers.append(observer)
 
-    def notify_observers(self):
+    def notify_observers(self, timestamp):
         for observer in self._observers:
-            observer.update(self)
+            observer.update(timestamp)
 

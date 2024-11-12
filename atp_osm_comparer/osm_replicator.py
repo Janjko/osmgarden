@@ -1,4 +1,4 @@
-import atp_data_load as atp_data_load
+import osm_matching_to_atp as omta
 import osmium_replicator
 import datetime as dt
 import time
@@ -6,12 +6,12 @@ import os
 
 seqid_path = 'seqid.txt'
 
-def start_replicator(sets, osm_date, data_path, nodes, ways, relations):
+def start_replicator(atp_elements, osm_date, data_path, nodes, ways, relations):
     repserv = osmium_replicator.get_server()
     filepath = data_path + seqid_path
     seqid = get_seqid(osm_date, filepath, repserv)
 
-    h = osmium_replicator.FileStatsHandler(sets, atp_data_load.match_to_set, nodes, ways, relations)
+    h = osmium_replicator.FileStatsHandler(atp_elements, omta.match_to_set, nodes, ways, relations)
     maxkb = 10 * 1024
     while True:
         lastseqid = repserv.apply_diffs(h, seqid, maxkb)
