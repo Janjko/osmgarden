@@ -15,39 +15,20 @@ class WebManager:
         self.relations.register_observer(self)
         self.data_folder = data_folder
         self.html_filename = os.path.join(self.data_folder, "index.html")
+        self.json_filename = os.path.join(self.data_folder, "data.json")
         self.atp_set = atp_set
+        self.seqid = None
 
     def update(self, timestamp):
-        objects = [self.nodes, self.ways, self.relations]
-        grouped_data = defaultdict(lambda: {'total': 0, 'non_none': 0})
-        for obj in objects:
-            for key, value in obj.data.items():
-                grouped_data[value.name]['total'] += 1
-                if 'timestamp' not in grouped_data[value.name]:
-                    grouped_data[value.name]['timestamp'] = value.timestamp
-                else:
-                    if value.timestamp > grouped_data[value.name]['timestamp']:
-                        grouped_data[value.name]['timestamp'] = value.timestamp
-                if value.element is not None:
-                    grouped_data[value.name]['non_none'] += 1
 
-        for wikiid, atp_sets in self.atp_set.items():
-            for atp_set in atp_sets:
-                if atp_set.name in grouped_data:
-                    grouped_data[atp_set.name]['atp_total'] = len(atp_set.elements)
-                    grouped_data[atp_set.name]['defining_tag'] = atp_set.defining_tag
-                    grouped_data[atp_set.name]['wikidata'] = wikiid
-                else:
-                    grouped_data[atp_set.name]['total'] = 0
-                    grouped_data[atp_set.name]['non_none'] = 0
-                    grouped_data[atp_set.name]['atp_total'] = len(atp_set.elements)
-                    grouped_data[atp_set.name]['defining_tag'] = atp_set.defining_tag
-                    grouped_data[atp_set.name]['wikidata'] = wikiid
-        # Create an HTML table
-        html_table = """
+        grouped_data = self.get_state()
+        
+       # Create an HTML table
+        html_table = f"""
         <link rel="stylesheet" type="text/css" href="https://cdn.datatables.net/1.13.5/css/jquery.dataTables.min.css">
         <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
         <script type="text/javascript" src="https://cdn.datatables.net/1.13.5/js/jquery.dataTables.min.js"></script>
+        <span id="seqid">Sequence ID: {self.seqid}</span>
         <table id="myTable" class="display">
             <thead>
                 <tr>
@@ -105,3 +86,29 @@ class WebManager:
         repo.index.add([git_file_path])
         repo.index.commit(commit_message)
         repo.remotes.origin.push(refspec='main:main')
+
+    def get_state(self):
+        objects = [self.nodes, self.ways, self.relations]
+        grouped_data = defaultdict(lambda: {'total': 0, 'non_none': 0})
+        for obj in objects:
+            for key, value in obj.data.items():
+                grouped_data[value.name]['total'] += 1
+                if 'timestamp' not in grouped_data[value.name]:
+                    grouped_data[value.name]['timestamp'] = str(value.timestamp)
+                else:
+                    grouped_data[value.name]['timestamp'] = max(grouped_data[value.name]['timestamp'], str(value.timestamp))
+                if value.element is not None:
+                    grouped_data[value.name]['non_none'] += 1
+
+        for wikiid, atp_sets in self.atp_set.items():
+            for atp_set in atp_sets:
+                entry = grouped_data[atp_set.name]
+                entry['atp_total'] = len(atp_set.refs)
+                entry['defining_tag'] = atp_set.defining_tag
+                entry['wikidata'] = wikiid
+        return grouped_data
+    
+    def update_json(self):
+
+        grouped_data = self.get_state()
+        json.dump(grouped_data, open(self.json_filename, 'w'))

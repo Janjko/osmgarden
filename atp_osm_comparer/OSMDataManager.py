@@ -8,8 +8,6 @@ import time
 from autosavearray import AutoSaveArray
 import osm_matching_to_atp as omta
 
-OSM_Set = namedtuple('OSM_Set', ['name', 'element'])
-
 class OSMDataManager():
     def __init__(self, data_folder, atp_sets):
         self.osm_history_url = "https://planet.openstreetmap.org/pbf/planet-pbf-rss.xml"
@@ -23,6 +21,10 @@ class OSMDataManager():
         self.osm_extension = ".osm.pbf"
         self.osm_data_file, self.current_osm_run_id = self.get_file_by_prefix(self.data_folder, self.osm_filtered_filename_prefix, self.osm_extension)
         self.osm_data_filtered = True
+        if self.osm_data_file != None and os.stat(self.osm_data_file).st_size == 0:
+            self.osm_data_filtered = False
+            os.remove(self.osm_data_file)
+            self.osm_data_file = None
         if self.osm_data_file == None:
             self.osm_data_filtered = False
             self.osm_data_file, self.current_osm_run_id = self.get_file_by_prefix(self.data_folder, self.osm_planet_filename_prefix, self.osm_extension)
@@ -51,7 +53,7 @@ class OSMDataManager():
                     f.write(chunk)
         return local_filename
     
-    def download_osm(self, force):
+    def download_osm(self):
         """Download OSM extract.
 
         Data is downloaded into data_path, as planet-latest.osm.pbf.
@@ -67,7 +69,7 @@ class OSMDataManager():
             rss_xml = response.content
 
             root = ET.fromstring(rss_xml)
-
+            new_osm_extract_downloaded = False
             item = root.find(".//item")
             guid = item.find('guid').text
             link = item.find('link').text
@@ -78,19 +80,19 @@ class OSMDataManager():
                 if date_str != self.current_osm_run_id:
                     # Add the new run_id to the local array
                     torrent_file = self.download_file(link, self.data_folder)
-                    self.osm_data_file = self.download_torrent(torrent_file, self.data_folder)
-                    self.osm_data_filtered = False
+                    downloaded_file = self.download_torrent(torrent_file, self.data_folder)
+                    if os.path.exists(downloaded_file):
+                        new_osm_extract_downloaded = True
+                        os.remove(self.osm_data_file) 
+                        self.osm_data_file = downloaded_file
+                        self.osm_data_filtered = False
+
+                        self.node_list.delete_pickle_file()
+                        self.way_list.delete_pickle_file()
+                        self.relation_list.delete_pickle_file()
 
                     os.remove(torrent_file)
-
-                    self.node_list.delete_pickle_file()
-                    self.way_list.delete_pickle_file()
-                    self.relation_list.delete_pickle_file()
         
-        if force:
-            self.node_list.delete_pickle_file()
-            self.way_list.delete_pickle_file()
-            self.relation_list.delete_pickle_file()
         if (not self.node_list.file_exists() and not self.way_list.file_exists() and not self.relation_list.file_exists()):
 
             filtered_planet = os.path.join(self.data_folder, self.osm_filtered_filename_prefix + date_str + self.osm_extension)
@@ -101,6 +103,8 @@ class OSMDataManager():
             self.osm_timestamp = timestamp
         #if not self.osm_data_filtered:
         #    os.remove(self.osm_data_file)
+
+        return new_osm_extract_downloaded
 
     def get_osm_file_timestamp(self):
         f = o.io.Reader(self.osm_data_file, o.osm.osm_entity_bits.NOTHING)
@@ -157,6 +161,8 @@ class OSMDataManager():
         nodes_list.save()
         ways_list.save()
         relations_list.save()
+
+
                 
         if not alreadyfiltered:
             writer.close()
@@ -165,7 +171,7 @@ class OSMDataManager():
     def process_osm_object(self, obj, set, spider_name, element_ref):
         if spider_name is not None:
             try:
-                set.append(obj.id, spider_name, element_ref, obj.timestamp)
+                set.append(obj.id, spider_name, element_ref, obj.timestamp, obj.version)
             except Exception as e:
                 print(e)
 
@@ -182,4 +188,4 @@ class OSMDataManager():
             time.sleep(1)
 
         print('Download complete!')
-
+        return os.path.join(data_path, os.path.basename(torrent_file).rsplit('.', 1)[0])

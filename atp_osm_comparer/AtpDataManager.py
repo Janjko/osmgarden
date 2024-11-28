@@ -6,8 +6,9 @@ import shutil
 from collections import namedtuple
 from collections import defaultdict
 import pickle
+from Condition import Condition
 
-ATP_Set = namedtuple('ATP_Set', ['name', 'defining_tag', 'elements'])
+ATP_Set = namedtuple('ATP_Set', ['name', 'defining_tag', 'refs'])
 
 class ATPDataManager:
     def __init__(self, data_folder):
@@ -122,10 +123,11 @@ class ATPDataManager:
 
                 if (len(wiki_tags)==1 and dt != None):
                     wikidata_value = wiki_tags[next(iter(wiki_tags))]
+                    condition = self.convert_defining_tags_to_condition(dt)
                     if wikidata_value in sets:
-                        sets[wikidata_value].append(ATP_Set(name, dt, ref_tags))
+                        sets[wikidata_value].append(ATP_Set(name, condition, ref_tags))
                     else:
-                        sets[wikidata_value] = [ATP_Set(name, dt, ref_tags)]
+                        sets[wikidata_value] = [ATP_Set(name, condition, ref_tags)]
                 print("Common key-value pairs:", wiki_tags)
         return sets
 
@@ -152,6 +154,16 @@ class ATPDataManager:
         else:
             print(f"No common 'shop' or 'amenity' in set {name}")
             return None
+    
+    def convert_defining_tags_to_condition(self, defining_tags):
+        if len(defining_tags) == 1:
+            if "shop" in defining_tags and (defining_tags["shop"] == "supermarket" or defining_tags["shop"] == "convenience"):
+                return Condition("or", Condition("leaf", ("shop", "supermarket")), Condition("leaf", ("shop", "convenience")))
+            key, value = next(iter(defining_tags.items()))
+            return Condition("leaf", (key, value))
+        else:
+            leaf_conditions = [Condition("leaf", (key, value)) for key, value in defining_tags.items()]
+            return Condition("and", *leaf_conditions)
         
     def get_wiki_tags(self, atp_object):
         common_tags = {}

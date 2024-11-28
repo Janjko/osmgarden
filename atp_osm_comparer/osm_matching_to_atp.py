@@ -1,6 +1,5 @@
 from collections import namedtuple
-
-ATP_Set = namedtuple('ATP_Set', ['name', 'defining_tag' 'elements'])
+from AtpDataManager import ATP_Set
 
 def match_to_set(atp_elements, obj, action, osm_set):
     brand_key = 'brand:wikidata'
@@ -16,20 +15,20 @@ def match_to_set(atp_elements, obj, action, osm_set):
 
             if action == 'm':                               # The osm element has wikidata tags, but they don't match with atp:
                 if obj.id in osm_set.data:
-                    osm_set.delete_and_save(obj.id, obj.timestamp)
+                    osm_set.delete_and_save(obj.id, obj.timestamp, obj.version)
             return
 
         matched_atp_name, matched_ref = find_atp_name_and_ref_by_element(atp_elements[obj.tags[matched_key]], obj.tags)
 
         if matched_atp_name is not None:
             try:
-                work_osm_element(atp_elements, osm_set, action, obj.id, matched_ref, matched_atp_name, obj.timestamp)
+                work_osm_element(atp_elements, osm_set, action, obj.id, matched_ref, matched_atp_name, obj.timestamp, obj.version)
             except Exception as e:
                 print(e)
 
     elif action == 'm':                                         # The osm element lost wikidata tags:
         if obj.id in osm_set.data:
-            osm_set.delete_and_save(obj.id, obj.timestamp)
+            osm_set.delete_and_save(obj.id, obj.timestamp, obj.version)
 
     
 def find_atp_name_and_ref_by_element(spiders: list[ATP_Set], osm_tags):
@@ -40,7 +39,7 @@ def find_atp_name_and_ref_by_element(spiders: list[ATP_Set], osm_tags):
     matching_defining_tags=[]
     matching_ref=[]
     for spider in spiders:
-        if all(key in osm_tags and osm_tags[key] == value for key, value in spider.defining_tag.items()):
+        if spider.defining_tag.evaluate(osm_tags):
             matching_defining_tags.append(spider.name)
 
     if len(matching_defining_tags) == 0:
@@ -48,7 +47,7 @@ def find_atp_name_and_ref_by_element(spiders: list[ATP_Set], osm_tags):
 
     if osm_ref is not None:
         for spider in spiders:
-            if osm_ref in spider.elements:
+            if osm_ref in spider.refs:
                 matching_ref.append(spider.name)
         
     matching_both_ref_and_defining_tags = [name for name in matching_defining_tags if name in matching_ref]
@@ -63,20 +62,20 @@ def find_atp_name_and_ref_by_element(spiders: list[ATP_Set], osm_tags):
 
     
 
-def work_osm_element(atp_elements, osm_set, action, obj_id, obj_ref, matched_atp_name, timestamp):
+def work_osm_element(atp_elements, osm_set, action, obj_id, obj_ref, matched_atp_name, timestamp, version):
     if action == 'a':
         if obj_id in osm_set.data:
             raise Exception ("There's already an id of an element in our list that has just been added")
-        osm_set.append_and_save(obj_id, matched_atp_name, obj_ref, timestamp)
+        osm_set.append_and_save(obj_id, matched_atp_name, obj_ref, timestamp, version)
     elif action == 'd':
         if obj_id in osm_set.data:
-            osm_set.delete_and_save(obj_id, timestamp)
+            osm_set.delete_and_save(obj_id, timestamp, version)
         else:
             raise Exception ("An element that should be in our set was deleted, but it isnt in our list.")
     elif action == 'm':
         if obj_id in osm_set.data:
             if osm_set.data[obj_id].name != matched_atp_name or osm_set.data[obj_id].element != obj_ref:
-                osm_set.update_and_save(obj_id, matched_atp_name, obj_ref, timestamp)
+                osm_set.update_and_save(obj_id, matched_atp_name, obj_ref, timestamp, version)
         else:
-            osm_set.append_and_save(obj_id, matched_atp_name, obj_ref, timestamp)
+            osm_set.append_and_save(obj_id, matched_atp_name, obj_ref, timestamp, version)
 
